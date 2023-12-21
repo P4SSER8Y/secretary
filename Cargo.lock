@@ -797,7 +797,7 @@ dependencies = [
  "conv",
  "image",
  "imageproc",
- "lazy_static",
+ "once_cell",
  "rocket",
  "rusttype",
 ]
