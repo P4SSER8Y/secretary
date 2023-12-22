@@ -48,6 +48,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "anyhow"
+version = "1.0.76"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "59d2a3357dde987206219e78ecfbbb6e8dad06cbb65292758d3270e6254f7355"
+
+[[package]]
 name = "approx"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -793,11 +799,13 @@ checksum = "302d7ab3130588088d277783b1e2d2e10c9e9e4a16dd9050e6ec93fb3e7048f4"
 name = "lighter"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "chrono",
  "conv",
  "image",
  "imageproc",
  "once_cell",
+ "rand 0.8.5",
  "rocket",
  "rusttype",
 ]

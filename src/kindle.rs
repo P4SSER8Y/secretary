@@ -1,14 +1,15 @@
-use once_cell::sync::{Lazy, OnceCell};
-use rocket::info;
-use rusttype::{Font, Scale};
-use std::collections::HashMap;
-use std::io::Cursor;
-
+use anyhow::{anyhow, Result};
 use chrono::{self, DateTime, Datelike, Local};
 use image::{GrayImage, Luma};
 use imageproc::drawing::{self};
 use imageproc::rect::Rect;
+use once_cell::sync::{Lazy, OnceCell};
+use rand::Rng;
+use rocket::{error, info};
 use rocket::{http::ContentType, Build, Rocket};
+use rusttype::{Font, Scale};
+use std::collections::HashMap;
+use std::io::Cursor;
 
 static FONT_MAIN: OnceCell<Font> = OnceCell::new();
 
@@ -80,7 +81,14 @@ fn draw_aligned_text<'a>(
     drawing::draw_text_mut(canvas, color, x, y, scale, font, &text);
 }
 
-fn get_style_alpha(battery: Option<usize>, now: DateTime<Local>) -> GrayImage {
+struct Context {
+    battery: Option<usize>,
+    now: Option<DateTime<Local>>,
+}
+
+fn get_style_alpha(context: &Context) -> Result<GrayImage> {
+    let battery = context.battery;
+    let now = context.now.ok_or(anyhow!("time not provided"))?;
     let mut img = GrayImage::new(600, 800);
 
     let rect = Rect::at(0, 0).of_size(img.width(), img.height());
@@ -131,10 +139,11 @@ fn get_style_alpha(battery: Option<usize>, now: DateTime<Local>) -> GrayImage {
         (AlignHorizontal::Center, AlignVertical::Bottom),
     );
 
-    return img;
+    return Ok(img);
 }
 
-fn get_style_beta(battery: Option<usize>, now: DateTime<Local>) -> GrayImage {
+fn get_style_beta(context: &Context) -> Result<GrayImage> {
+    let now = context.now.ok_or(anyhow!("time not provided"))?;
     static MAP: Lazy<HashMap<u8, &'static str>> = Lazy::new(|| {
         let mut map = HashMap::new();
         map.insert(1, "壹");
@@ -221,31 +230,51 @@ fn get_style_beta(battery: Option<usize>, now: DateTime<Local>) -> GrayImage {
     draw_aligned_text(
         &mut img,
         color,
-        (40, 800 - 40),
-        Scale::uniform(120.0),
+        (600 - 40, 20),
+        Scale::uniform(150.0),
         &FONT_MAIN.get().unwrap(),
         &format!(
-            "{}  {}%",
+            "{}",
             MAP_WEEKDAY
                 .get(&(now.weekday().num_days_from_sunday() as u8))
-                .unwrap(),
-            battery.unwrap_or(0),
+                .unwrap()
         ),
-        (AlignHorizontal::Left, AlignVertical::Bottom),
+        (AlignHorizontal::Right, AlignVertical::Top),
     );
 
-    return img;
+    return Ok(img);
 }
 
-#[get("/?<battery>")]
-fn main(battery: Option<usize>) -> (ContentType, Vec<u8>) {
-    let now = chrono::Local::now();
-    info!("now={:?}", now);
-    info!("battery={:?}", battery);
+static STYLE_LIST: [fn(&Context) -> Result<GrayImage>; 2] = [get_style_alpha, get_style_beta];
 
-    let img = get_style_beta(battery, now);
-    let mut buffer: Vec<u8> = Vec::new();
-    img.write_to(&mut Cursor::new(&mut buffer), image::ImageOutputFormat::Png)
-        .expect("failed to encoded image");
-    (ContentType::PNG, buffer)
+fn factory(n: usize, context: &Context) -> Result<GrayImage> {
+    if n >= STYLE_LIST.len() {
+        return Err(anyhow!("invalid style number={}", n));
+    }
+    return STYLE_LIST[n](context);
+}
+
+#[get("/?<battery>&<style>")]
+fn main(battery: Option<usize>, style: Option<usize>) -> (ContentType, Vec<u8>) {
+    let context = Context {
+        battery: battery,
+        now: Some(chrono::Local::now()),
+    };
+    let style = style.unwrap_or_else(|| rand::thread_rng().gen_range(0..2));
+    info!("style={}", style);
+    info!("now={:?}", context.now);
+    info!("battery={:?}", context.battery);
+
+    match factory(style, &context) {
+        Ok(img) => {
+            let mut buffer: Vec<u8> = Vec::new();
+            img.write_to(&mut Cursor::new(&mut buffer), image::ImageOutputFormat::Png)
+                .expect("failed to encoded image");
+            return (ContentType::PNG, buffer);
+        }
+        Err(e) => {
+            error!("{:?}", e);
+            return (ContentType::Any, format!("{:?}", e).into_bytes());
+        }
+    }
 }
