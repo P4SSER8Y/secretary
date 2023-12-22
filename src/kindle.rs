@@ -4,7 +4,7 @@ use rusttype::{Font, Scale};
 use std::collections::HashMap;
 use std::io::Cursor;
 
-use chrono::{self, Datelike};
+use chrono::{self, DateTime, Datelike, Local};
 use image::{GrayImage, Luma};
 use imageproc::drawing::{self};
 use imageproc::rect::Rect;
@@ -80,12 +80,7 @@ fn draw_aligned_text<'a>(
     drawing::draw_text_mut(canvas, color, x, y, scale, font, &text);
 }
 
-#[get("/?<battery>")]
-fn main(battery: Option<usize>) -> (ContentType, Vec<u8>) {
-    let now = chrono::Local::now();
-    info!("now={:?}", now);
-    info!("battery={:?}", battery);
-
+fn get_style_alpha(battery: Option<usize>, now: DateTime<Local>) -> GrayImage {
     let mut img = GrayImage::new(600, 800);
 
     let rect = Rect::at(0, 0).of_size(img.width(), img.height());
@@ -136,6 +131,119 @@ fn main(battery: Option<usize>) -> (ContentType, Vec<u8>) {
         (AlignHorizontal::Center, AlignVertical::Bottom),
     );
 
+    return img;
+}
+
+fn get_style_beta(battery: Option<usize>, now: DateTime<Local>) -> GrayImage {
+    static MAP: Lazy<HashMap<u8, &'static str>> = Lazy::new(|| {
+        let mut map = HashMap::new();
+        map.insert(1, "壹");
+        map.insert(2, "贰");
+        map.insert(3, "叁");
+        map.insert(4, "肆");
+        map.insert(5, "伍");
+        map.insert(6, "陆");
+        map.insert(7, "柒");
+        map.insert(8, "捌");
+        map.insert(9, "玖");
+        map.insert(10, "拾");
+        map.insert(20, "廿");
+        map.insert(30, "卅");
+        map
+    });
+    let mut img = GrayImage::new(600, 800);
+
+    let rect = Rect::at(0, 0).of_size(img.width(), img.height());
+    drawing::draw_filled_rect_mut(&mut img, rect, Luma([255]));
+
+    let font_scale = Scale::uniform(375.0);
+    let color = Luma([0]);
+    let base = (40, 300);
+    if now.day() < 10 {
+        draw_aligned_text(
+            &mut img,
+            color,
+            base,
+            font_scale,
+            FONT_MAIN.get().unwrap(),
+            MAP.get(&(now.day() as u8)).unwrap(),
+            (AlignHorizontal::Left, AlignVertical::Center),
+        );
+    } else if now.day() == 10 {
+        draw_aligned_text(
+            &mut img,
+            color,
+            base,
+            font_scale,
+            FONT_MAIN.get().unwrap(),
+            MAP.get(&(10)).unwrap(),
+            (AlignHorizontal::Left, AlignVertical::Center),
+        );
+    } else if (now.day() == 20) || (now.day() == 30) {
+        draw_aligned_text(
+            &mut img,
+            color,
+            base,
+            font_scale,
+            FONT_MAIN.get().unwrap(),
+            MAP.get(&((now.day() / 10) as u8)).unwrap(),
+            (AlignHorizontal::Left, AlignVertical::Bottom),
+        );
+        draw_aligned_text(
+            &mut img,
+            color,
+            base,
+            font_scale,
+            FONT_MAIN.get().unwrap(),
+            MAP.get(&10).unwrap(),
+            (AlignHorizontal::Left, AlignVertical::Top),
+        );
+    } else {
+        draw_aligned_text(
+            &mut img,
+            color,
+            base,
+            font_scale,
+            FONT_MAIN.get().unwrap(),
+            MAP.get(&((now.day() / 10 * 10) as u8)).unwrap(),
+            (AlignHorizontal::Left, AlignVertical::Bottom),
+        );
+        draw_aligned_text(
+            &mut img,
+            color,
+            base,
+            font_scale,
+            FONT_MAIN.get().unwrap(),
+            MAP.get(&((now.day() % 10) as u8)).unwrap(),
+            (AlignHorizontal::Left, AlignVertical::Top),
+        );
+    }
+    draw_aligned_text(
+        &mut img,
+        color,
+        (40, 800 - 40),
+        Scale::uniform(120.0),
+        &FONT_MAIN.get().unwrap(),
+        &format!(
+            "{}  {}%",
+            MAP_WEEKDAY
+                .get(&(now.weekday().num_days_from_sunday() as u8))
+                .unwrap(),
+            battery.unwrap_or(0),
+        ),
+        (AlignHorizontal::Left, AlignVertical::Bottom),
+    );
+
+    return img;
+}
+
+#[get("/?<battery>")]
+fn main(battery: Option<usize>) -> (ContentType, Vec<u8>) {
+    let now = chrono::Local::now();
+    info!("now={:?}", now);
+    info!("battery={:?}", battery);
+
+    let img = get_style_beta(battery, now);
     let mut buffer: Vec<u8> = Vec::new();
     img.write_to(&mut Cursor::new(&mut buffer), image::ImageOutputFormat::Png)
         .expect("failed to encoded image");
