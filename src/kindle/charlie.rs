@@ -35,7 +35,7 @@ fn get_day(day: u32) -> String {
     } else {
         return format!(
             "{}{}",
-            MAP.get(&(day / 10)).unwrap(),
+            MAP.get(&(day / 10 * 10)).unwrap(),
             MAP.get(&(day % 10)).unwrap()
         );
     }
