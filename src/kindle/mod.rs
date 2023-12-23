@@ -1,9 +1,10 @@
 mod alpha;
 mod bravo;
+mod charlie;
 mod shared;
 
 use anyhow::{anyhow, Result};
-use chrono;
+use chrono::{self, DateTime, Local};
 use image::GrayImage;
 use once_cell::sync::{Lazy, OnceCell};
 use rand::Rng;
@@ -15,9 +16,20 @@ use std::collections::HashMap;
 use std::io::Cursor;
 
 static FONTS: OnceCell<HashMap<String, Font>> = OnceCell::new();
+static DEFAULT_STYLE: OnceCell<Option<usize>> = OnceCell::new();
 
 pub fn build(base: &'static str, build: Rocket<Build>) -> Rocket<Build> {
     load_fonts(&build);
+    info!(
+        "default style={:?}",
+        DEFAULT_STYLE.get_or_init(|| {
+            build
+                .figment()
+                .find_value("kindle.style")
+                .ok()
+                .and_then(|x| x.to_i128().and_then(|x| Some(x as usize)))
+        })
+    );
     build.mount(base, routes![main])
 }
 
@@ -47,7 +59,7 @@ fn load_fonts(build: &Rocket<Build>) {
 }
 
 static STYLE_LIST: Lazy<Vec<fn(&Context) -> Result<GrayImage>>> =
-    Lazy::new(|| vec![alpha::generate, bravo::generate]);
+    Lazy::new(|| vec![alpha::generate, bravo::generate, charlie::generate]);
 
 fn factory(n: usize, context: &Context) -> Result<GrayImage> {
     if n >= STYLE_LIST.len() {
@@ -56,14 +68,23 @@ fn factory(n: usize, context: &Context) -> Result<GrayImage> {
     return STYLE_LIST[n](context);
 }
 
-#[get("/?<battery>&<style>")]
-fn main(battery: Option<usize>, style: Option<usize>) -> (ContentType, Vec<u8>) {
+#[get("/?<battery>&<style>&<now>")]
+fn main(
+    battery: Option<usize>,
+    style: Option<usize>,
+    now: Option<String>,
+) -> (ContentType, Vec<u8>) {
+    info!("{:?}", now);
+    let now = match now {
+        Some(raw) => DateTime::parse_from_str(&raw, "%Y-%m-%d").unwrap().into(),
+        None => Local::now(),
+    };
     let context = Context {
         battery: battery,
-        now: Some(chrono::Local::now()),
+        now: Some(now),
         fonts: FONTS.get().unwrap(),
     };
-    let style = style.unwrap_or_else(|| rand::thread_rng().gen_range(0..2));
+    let style = style.or_else(|| *DEFAULT_STYLE.get().unwrap()).unwrap_or_else(|| rand::thread_rng().gen_range(0..STYLE_LIST.len()));
     info!("style={}", style);
     info!("now={:?}", context.now);
     info!("battery={:?}", context.battery);

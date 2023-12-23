@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
 use image::{GrayImage, Luma};
-use imageproc::drawing;
-use rusttype::{Scale, Font};
+use imageproc::{drawing, rect::Rect};
+use rusttype::{Font, Scale};
 
 #[allow(dead_code)]
 pub enum AlignHorizontal {
@@ -26,7 +26,7 @@ pub fn draw_aligned_text<'a>(
     font: &'a Font<'a>,
     text: &'a str,
     align: (AlignHorizontal, AlignVertical),
-) {
+) -> Rect {
     let size = drawing::text_size(scale, font, &text);
     let x = match align.0 {
         AlignHorizontal::Left => base.0,
@@ -39,6 +39,7 @@ pub fn draw_aligned_text<'a>(
         AlignVertical::Bottom => base.1 - size.1,
     };
     drawing::draw_text_mut(canvas, color, x, y, scale, font, &text);
+    return Rect::at(x, y).of_size(size.0.try_into().unwrap(), size.1.try_into().unwrap());
 }
 
 pub struct Context<'a> {
