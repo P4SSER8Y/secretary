@@ -30,16 +30,16 @@ pub fn generate(context: &Context) -> Result<GrayImage> {
     let now = context.now.ok_or(anyhow!("time not provided"))?;
     static MAP: Lazy<HashMap<u8, &'static str>> = Lazy::new(|| {
         let mut map = HashMap::new();
-        map.insert(1, "壹");
-        map.insert(2, "贰");
-        map.insert(3, "叁");
-        map.insert(4, "肆");
-        map.insert(5, "伍");
-        map.insert(6, "陆");
-        map.insert(7, "柒");
-        map.insert(8, "捌");
-        map.insert(9, "玖");
-        map.insert(10, "拾");
+        map.insert(1, "一");
+        map.insert(2, "二");
+        map.insert(3, "三");
+        map.insert(4, "四");
+        map.insert(5, "五");
+        map.insert(6, "六");
+        map.insert(7, "七");
+        map.insert(8, "八");
+        map.insert(9, "九");
+        map.insert(10, "十");
         map.insert(20, "廿");
         map.insert(30, "卅");
         map
