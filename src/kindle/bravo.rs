@@ -129,17 +129,45 @@ pub fn generate(context: &Context) -> Result<GrayImage> {
         (AlignHorizontal::Right, AlignVertical::Top),
     );
 
-    if let Ok(forcast) = qweather::get_24h_forcast() {
-        info!("{:#?}", forcast.texts);
-        draw_aligned_text(
-            &mut img,
-            Luma([128]),
-            (300, 750),
-            Scale::uniform(72.0),
-            font,
-            &format!("{}~{}℃", forcast.min_temp, forcast.max_temp),
-            (AlignHorizontal::Center, AlignVertical::Bottom),
-        );
+    // if let Ok(forcast) = qweather::get_24h_forcast() {
+    //     info!("{:#?}", forcast.texts);
+    //     draw_aligned_text(
+    //         &mut img,
+    //         Luma([128]),
+    //         (300, 750),
+    //         Scale::uniform(72.0),
+    //         font,
+    //         &format!("{}~{}℃", forcast.min_temp, forcast.max_temp),
+    //         (AlignHorizontal::Center, AlignVertical::Bottom),
+    //     );
+    // }
+
+    if let Ok(forecast) = qweather::get_3d_forecast() {
+        if forecast.len() == 3 {
+            let y = 725;
+            let x = vec![100, 300, 500];
+            let color = Luma([96]);
+            for i in 0..3 {
+                draw_aligned_text(
+                    &mut img,
+                    color,
+                    (x[i], y),
+                    Scale::uniform(72.0),
+                    font,
+                    &forecast[i].text,
+                    (AlignHorizontal::Center, AlignVertical::Bottom),
+                );
+                draw_aligned_text(
+                    &mut img,
+                    color,
+                    (x[i], y),
+                    Scale::uniform(48.0),
+                    font,
+                    &format!("{}-{}", forecast[i].temp_min, forecast[i].temp_max),
+                    (AlignHorizontal::Center, AlignVertical::Top),
+                );
+            }
+        }
     }
 
     return Ok(img);

@@ -9,6 +9,7 @@ use rocket::{info, Build, Rocket, error};
 static SCHEDULER: OnceCell<cron::Schedule> = OnceCell::new();
 
 pub use api::get_24h_forcast;
+pub use api::get_3d_forecast;
 
 pub fn build(build: Rocket<Build>) -> Rocket<Build> {
     SCHEDULER.get_or_init(|| {

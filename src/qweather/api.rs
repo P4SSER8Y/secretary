@@ -1,5 +1,5 @@
 use anyhow::{anyhow, Result};
-use chrono::{DateTime, Local};
+use chrono::{DateTime, Local, NaiveTime};
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
@@ -21,9 +21,8 @@ static CONFIG: Lazy<Mutex<Config>> = Lazy::new(|| {
 const API_URL_3D: &str = "https://devapi.qweather.com/v7/weather/3d";
 // cf. https://dev.qweather.com/docs/api/weather/weather-now/
 const API_URL_24H: &str = "https://devapi.qweather.com/v7/weather/24h";
-static DATA_24H: Lazy<Mutex<Vec<HourForcase>>> = Lazy::new(|| Mutex::new(Vec::new()));
-static RAW_DATA_3D: Lazy<Mutex<serde_json::Value>> =
-    Lazy::new(|| Mutex::new(serde_json::Value::Null));
+static DATA_24H: Lazy<Mutex<Vec<HourlyForecast>>> = Lazy::new(|| Mutex::new(Vec::new()));
+static DATA_3D: Lazy<Mutex<Vec<DailyForecast>>> = Lazy::new(|| Mutex::new(Vec::new()));
 
 pub struct Forcast24H {
     pub min_temp: i32,
@@ -51,37 +50,84 @@ pub fn get_24h_forcast() -> Result<Forcast24H> {
     });
 }
 
+pub fn get_3d_forecast() -> Result<Vec<DailyForecast>> {
+    let data = DATA_3D.lock().or(Err(anyhow!("cannot acquire lock")))?;
+    if data.len() == 0 {
+        return Err(anyhow!("no data yet"));
+    }
+    return Ok(data.clone());
+}
+
 #[allow(non_snake_case)]
 #[derive(Serialize, Deserialize, Debug)]
-struct HourForcastRaw {
+struct HourlyForecastRaw {
     fxTime: String,
     temp: String,
     humidity: String,
     text: String,
 }
 
-#[derive(Debug)]
-pub struct HourForcase {
+#[derive(Debug, Clone)]
+pub struct HourlyForecast {
     pub fx_time: DateTime<Local>,
     pub temp: i32,
     pub humidity: i32,
     pub text: String,
 }
 
-impl std::convert::TryFrom<&HourForcastRaw> for HourForcase {
+impl std::convert::TryFrom<&HourlyForecastRaw> for HourlyForecast {
     type Error = anyhow::Error;
-
-    fn try_from(value: &HourForcastRaw) -> Result<HourForcase> {
+    fn try_from(value: &HourlyForecastRaw) -> Result<HourlyForecast> {
         let fx_time = DateTime::parse_from_str(&value.fxTime, "%Y-%m-%dT%H:%M%z")
             .or(Err(anyhow!("failed to parse fxTime")))?;
         let fx_time = DateTime::<Local>::try_from(fx_time)?;
         let temp: i32 = value.temp.parse()?;
         let humidity: i32 = value.temp.parse()?;
-        return Ok(HourForcase {
+        return Ok(HourlyForecast {
             fx_time: fx_time,
             temp: temp,
             humidity: humidity,
             text: value.text.clone(),
+        });
+    }
+}
+
+#[allow(non_snake_case)]
+#[derive(Serialize, Deserialize, Debug)]
+struct DailyForecastRaw {
+    fxDate: String,
+    tempMax: String,
+    tempMin: String,
+    textDay: String,
+    iconDay: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct DailyForecast {
+    pub date: DateTime<Local>,
+    pub temp_min: i32,
+    pub temp_max: i32,
+    pub text: String,
+    pub icon: String,
+}
+
+impl std::convert::TryFrom<&DailyForecastRaw> for DailyForecast {
+    type Error = anyhow::Error;
+    fn try_from(value: &DailyForecastRaw) -> Result<DailyForecast> {
+        let date = chrono::NaiveDate::parse_from_str(&value.fxDate, "%Y-%m-%d")
+            .or(Err(anyhow!("failed to parse fxDate")))?
+            .and_time(NaiveTime::from_hms_opt(23, 59, 59).unwrap())
+            .and_local_timezone(Local)
+            .single()
+            .ok_or(anyhow!("failed to parse fxDate"))?;
+        let temp_min: i32 = value.tempMin.parse()?;
+        let temp_max: i32 = value.tempMax.parse()?;
+        return Ok(DailyForecast {
+            date: date,
+            temp_max: temp_max,
+            temp_min: temp_min,
+            text: value.textDay.clone(),
+            icon: value.iconDay.clone(),
         });
     }
 }
@@ -136,13 +182,13 @@ pub fn update_24h() -> Result<()> {
     let mut raw = DATA_24H.lock().or(Err(anyhow!("failed to acquire lock")))?;
 
     let hourly = json.get("hourly").ok_or(anyhow!("hourly not found"))?;
-    let hour_forcast_raw: Vec<HourForcastRaw> = serde_json::from_value(hourly.clone())?;
+    let hour_forcast_raw: Vec<HourlyForecastRaw> = serde_json::from_value(hourly.clone())?;
     *raw = hour_forcast_raw
         .iter()
         .map(|x| TryFrom::try_from(x))
         .filter(|x| x.is_ok())
         .map(|x| x.unwrap())
-        .collect::<Vec<HourForcase>>();
+        .collect::<Vec<HourlyForecast>>();
     return Ok(());
 }
 
@@ -172,9 +218,15 @@ pub fn update_3d() -> Result<()> {
     if code != "200" {
         return Err(anyhow!("query failed"));
     }
-    let mut raw = RAW_DATA_3D
-        .lock()
-        .or(Err(anyhow!("failed to acquire lock")))?;
-    *raw = json;
+    let mut raw = DATA_3D.lock().or(Err(anyhow!("failed to acquire lock")))?;
+
+    let daily = json.get("daily").ok_or(anyhow!("daily not found"))?;
+    let daily_forecast_raw: Vec<DailyForecastRaw> = serde_json::from_value(daily.clone())?;
+    *raw = daily_forecast_raw
+        .iter()
+        .map(|x| TryFrom::try_from(x))
+        .filter(|x| x.is_ok())
+        .map(|x| x.unwrap())
+        .collect::<Vec<DailyForecast>>();
     return Ok(());
 }
