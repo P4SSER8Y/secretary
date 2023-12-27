@@ -7,4 +7,9 @@ log_level = "normal"
 style = 2
 
 [default.kindle.fonts]
-main = "SourceHanSerifSC-Heavy.otf"
+main = ""
+
+[default.weather]
+cron = ""
+location = ""
+key = ""

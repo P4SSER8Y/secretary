@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use crate::qweather;
+
 use super::shared::*;
 use anyhow::{anyhow, Result};
 use chrono::Datelike;
@@ -14,6 +16,7 @@ use rusttype::Scale;
 fn get_day(day: u32) -> String {
     static MAP: Lazy<HashMap<u32, &'static str>> = Lazy::new(|| {
         let mut map = HashMap::new();
+        map.insert(0, "〇");
         map.insert(1, "一");
         map.insert(2, "二");
         map.insert(3, "三");
@@ -28,9 +31,7 @@ fn get_day(day: u32) -> String {
         map.insert(30, "卅");
         return map;
     });
-    if day <= 10 {
-        return MAP.get(&day).unwrap_or(&"").to_string();
-    } else if (day == 20) || (day == 30) {
+    if (day == 10) || (day == 20) || (day == 30) {
         return format!("{}{}", MAP.get(&(day / 10)).unwrap(), MAP.get(&10).unwrap());
     } else {
         return format!(
@@ -97,6 +98,18 @@ pub fn generate(context: &Context) -> Result<GrayImage> {
         &weekday_name,
         (AlignHorizontal::Center, AlignVertical::Center),
     );
+
+    if let Ok(forcast) = qweather::get_24h_forcast() {
+        draw_aligned_text(
+            &mut img,
+            Luma([128]),
+            (300, 750),
+            Scale::uniform(72.0),
+            font,
+            &format!("{}~{}", forcast.min_temp, forcast.max_temp),
+            (AlignHorizontal::Center, AlignVertical::Bottom),
+        );
+    }
 
     return Ok(img);
 }

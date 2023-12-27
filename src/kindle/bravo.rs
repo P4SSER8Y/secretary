@@ -6,6 +6,8 @@ use imageproc::{drawing, rect::Rect};
 use once_cell::sync::Lazy;
 use rusttype::Scale;
 
+use crate::qweather;
+
 use super::shared::*;
 use anyhow::{anyhow, Result};
 
@@ -42,6 +44,7 @@ pub fn generate(context: &Context) -> Result<GrayImage> {
         map.insert(10, "十");
         map.insert(20, "廿");
         map.insert(30, "卅");
+        map.insert(40, "卌");
         map
     });
     let mut img = GrayImage::new(600, 800);
@@ -125,6 +128,19 @@ pub fn generate(context: &Context) -> Result<GrayImage> {
         ),
         (AlignHorizontal::Right, AlignVertical::Top),
     );
+
+    if let Ok(forcast) = qweather::get_24h_forcast() {
+        info!("{:#?}", forcast.texts);
+        draw_aligned_text(
+            &mut img,
+            Luma([128]),
+            (300, 750),
+            Scale::uniform(72.0),
+            font,
+            &format!("{}~{}℃", forcast.min_temp, forcast.max_temp),
+            (AlignHorizontal::Center, AlignVertical::Bottom),
+        );
+    }
 
     return Ok(img);
 }
