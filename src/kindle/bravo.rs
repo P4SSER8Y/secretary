@@ -2,7 +2,10 @@ use std::collections::HashMap;
 
 use chrono::Datelike;
 use image::{GrayImage, Luma};
-use imageproc::{drawing, rect::Rect};
+use imageproc::{
+    drawing::{self, draw_filled_rect_mut},
+    rect::Rect,
+};
 use once_cell::sync::Lazy;
 use rusttype::Scale;
 
@@ -54,7 +57,7 @@ pub fn generate(context: &Context) -> Result<GrayImage> {
 
     let font_scale = Scale::uniform(375.0);
     let color = Luma([0]);
-    let base = (40, 300);
+    let base = (40, 320);
     if now.day() < 10 {
         draw_aligned_text(
             &mut img,
@@ -117,7 +120,7 @@ pub fn generate(context: &Context) -> Result<GrayImage> {
     draw_aligned_text(
         &mut img,
         color,
-        (600 - 40, 20),
+        (600 - 40, 60),
         Scale::uniform(150.0),
         font,
         &format!(
@@ -129,21 +132,45 @@ pub fn generate(context: &Context) -> Result<GrayImage> {
         (AlignHorizontal::Right, AlignVertical::Top),
     );
 
-    // if let Ok(forcast) = qweather::get_24h_forcast() {
-    //     info!("{:#?}", forcast.texts);
-    //     draw_aligned_text(
-    //         &mut img,
-    //         Luma([128]),
-    //         (300, 750),
-    //         Scale::uniform(72.0),
-    //         font,
-    //         &format!("{}~{}℃", forcast.min_temp, forcast.max_temp),
-    //         (AlignHorizontal::Center, AlignVertical::Bottom),
-    //     );
-    // }
+    draw_filled_rect_mut(&mut img, Rect::at(0, 0).of_size(600, 40), Luma([0]));
+    let status_scale = Scale::uniform(36.0);
+    if let Some(battery) = context.battery {
+        let font = context
+            .fonts
+            .get("status")
+            .ok_or(anyhow!("status font not found"))?;
+        draw_aligned_text(
+            &mut img,
+            Luma([255]),
+            (600 - 25, 0),
+            status_scale,
+            font,
+            &format!("Battery: {}%", battery),
+            (AlignHorizontal::Right, AlignVertical::Top),
+        );
+    }
+    {
+        let font = context
+            .fonts
+            .get("status")
+            .ok_or(anyhow!("status font not found"))?;
+        draw_aligned_text(
+            &mut img,
+            Luma([255]),
+            (0 + 25, 0),
+            status_scale,
+            font,
+            &format!("Update: {}", now.format("%H:%M:%S")),
+            (AlignHorizontal::Left, AlignVertical::Top),
+        );
+    }
 
     if let Ok(forecast) = qweather::get_3d_forecast() {
         if forecast.len() == 3 {
+            let font = context
+                .fonts
+                .get("weather")
+                .ok_or(anyhow!("main font not found"))?;
             let y = 725;
             let x = vec![100, 300, 500];
             let color = Luma([96]);
