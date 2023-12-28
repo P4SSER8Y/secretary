@@ -8,6 +8,8 @@ style = 2
 
 [default.kindle.fonts]
 main = ""
+weather = ""
+status = ""
 
 [default.weather]
 cron = ""
