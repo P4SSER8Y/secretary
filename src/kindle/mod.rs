@@ -4,7 +4,7 @@ mod charlie;
 mod shared;
 
 use anyhow::{anyhow, Result};
-use chrono::{self, DateTime, Local};
+use chrono::{self, Local, NaiveDate};
 use image::GrayImage;
 use once_cell::sync::{Lazy, OnceCell};
 use rand::Rng;
@@ -76,15 +76,33 @@ fn main(
 ) -> (ContentType, Vec<u8>) {
     info!("{:?}", now);
     let now = match now {
-        Some(raw) => DateTime::parse_from_str(&raw, "%Y-%m-%d").unwrap().into(),
+        Some(raw) => {
+            let date = NaiveDate::parse_from_str(&raw, "%Y-%m-%d");
+            if let Ok(date) = date {
+                let naive_datetime = date.and_hms_opt(0, 0, 0).unwrap();
+                naive_datetime.and_local_timezone(Local).unwrap()
+            } else {
+                Local::now()
+            }
+        }
         None => Local::now(),
     };
+    let mut battery = battery;
+    if let Some(battery) = battery {
+        let db = crate::database::Db::new();
+        let _ = db.set("kindle/battery", &battery);
+    } else {
+        let db = crate::database::Db::new();
+        battery = db.get("kindle/battery").unwrap_or(None);
+    }
     let context = Context {
         battery: battery,
         now: Some(now),
         fonts: FONTS.get().unwrap(),
     };
-    let style = style.or_else(|| *DEFAULT_STYLE.get().unwrap()).unwrap_or_else(|| rand::thread_rng().gen_range(0..STYLE_LIST.len()));
+    let style = style
+        .or_else(|| *DEFAULT_STYLE.get().unwrap())
+        .unwrap_or_else(|| rand::thread_rng().gen_range(0..STYLE_LIST.len()));
     info!("style={}", style);
     info!("now={:?}", context.now);
     info!("battery={:?}", context.battery);

@@ -35,6 +35,7 @@ pub fn generate(context: &Context) -> Result<GrayImage> {
     let now = context.now.ok_or(anyhow!("time not provided"))?;
     static MAP: Lazy<HashMap<u8, &'static str>> = Lazy::new(|| {
         let mut map = HashMap::new();
+        map.insert(0, "〇");
         map.insert(1, "一");
         map.insert(2, "二");
         map.insert(3, "三");
@@ -57,66 +58,36 @@ pub fn generate(context: &Context) -> Result<GrayImage> {
 
     let font_scale = Scale::uniform(375.0);
     let color = Luma([0]);
-    let base = (40, 320);
-    if now.day() < 10 {
-        draw_aligned_text(
-            &mut img,
-            color,
-            base,
-            font_scale,
-            font,
-            MAP.get(&(now.day() as u8)).unwrap(),
-            (AlignHorizontal::Left, AlignVertical::Center),
-        );
-    } else if now.day() == 10 {
-        draw_aligned_text(
-            &mut img,
-            color,
-            base,
-            font_scale,
-            font,
-            MAP.get(&(10)).unwrap(),
-            (AlignHorizontal::Left, AlignVertical::Center),
-        );
-    } else if (now.day() == 20) || (now.day() == 30) {
-        draw_aligned_text(
-            &mut img,
-            color,
-            base,
-            font_scale,
-            font,
+    let (base_x, base_y) = (40, 320);
+    let (ch0, ch1) = if now.day() % 10 == 0 {
+        (
             MAP.get(&((now.day() / 10) as u8)).unwrap(),
-            (AlignHorizontal::Left, AlignVertical::Bottom),
-        );
-        draw_aligned_text(
-            &mut img,
-            color,
-            base,
-            font_scale,
-            font,
-            MAP.get(&10).unwrap(),
-            (AlignHorizontal::Left, AlignVertical::Top),
-        );
+            MAP.get(&(10)).unwrap(),
+        )
     } else {
-        draw_aligned_text(
-            &mut img,
-            color,
-            base,
-            font_scale,
-            font,
+        (
             MAP.get(&((now.day() / 10 * 10) as u8)).unwrap(),
-            (AlignHorizontal::Left, AlignVertical::Bottom),
-        );
-        draw_aligned_text(
-            &mut img,
-            color,
-            base,
-            font_scale,
-            font,
             MAP.get(&((now.day() % 10) as u8)).unwrap(),
-            (AlignHorizontal::Left, AlignVertical::Top),
-        );
-    }
+        )
+    };
+    draw_aligned_text(
+        &mut img,
+        color,
+        (base_x, base_y - 150),
+        font_scale,
+        font,
+        ch0,
+        (AlignHorizontal::Left, AlignVertical::Center),
+    );
+    draw_aligned_text(
+        &mut img,
+        color,
+        (base_x, base_y + 150),
+        font_scale,
+        font,
+        ch1,
+        (AlignHorizontal::Left, AlignVertical::Center),
+    );
     draw_aligned_text(
         &mut img,
         color,
