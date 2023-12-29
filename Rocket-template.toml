@@ -4,12 +4,10 @@ port = 8000
 log_level = "normal"
 
 [default.kindle]
-style = 2
-
-[default.kindle.fonts]
-main = ""
-weather = ""
-status = ""
+style = "<0,1,2>"
+fonts.main = ""
+fonts.weather = ""
+fonts.status = ""
 
 [default.weather]
 cron = ""
