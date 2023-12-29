@@ -1,3 +1,4 @@
 /target
 *.otf
 /Rocket.toml
+/memory
