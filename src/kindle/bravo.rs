@@ -64,6 +64,8 @@ pub fn generate(context: &Context) -> Result<GrayImage> {
             MAP.get(&((now.day() / 10) as u8)).unwrap(),
             MAP.get(&(10)).unwrap(),
         )
+    } else if now.day() < 10 {
+        (MAP.get(&((now.day() % 10) as u8)).unwrap(), &"号")
     } else {
         (
             MAP.get(&((now.day() / 10 * 10) as u8)).unwrap(),
