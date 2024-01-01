@@ -1,5 +1,5 @@
-use std::collections::HashMap;
-
+use super::shared::*;
+use anyhow::{anyhow, Result};
 use chrono::Datelike;
 use image::{GrayImage, Luma};
 use imageproc::{
@@ -8,11 +8,7 @@ use imageproc::{
 };
 use once_cell::sync::Lazy;
 use rusttype::Scale;
-
-use crate::qweather;
-
-use super::shared::*;
-use anyhow::{anyhow, Result};
+use std::collections::HashMap;
 
 static MAP_WEEKDAY: Lazy<HashMap<u8, &'static str>> = Lazy::new(|| {
     let mut map = HashMap::new();
@@ -28,10 +24,7 @@ static MAP_WEEKDAY: Lazy<HashMap<u8, &'static str>> = Lazy::new(|| {
 });
 
 pub fn generate(context: &Context) -> Result<GrayImage> {
-    let font = context
-        .fonts
-        .get("main")
-        .ok_or(anyhow!("main font not found"))?;
+    let font = get_font("main").ok_or(anyhow!("main font not found"))?;
     let now = context.now.ok_or(anyhow!("time not provided"))?;
     static MAP: Lazy<HashMap<u8, &'static str>> = Lazy::new(|| {
         let mut map = HashMap::new();
@@ -108,10 +101,7 @@ pub fn generate(context: &Context) -> Result<GrayImage> {
     draw_filled_rect_mut(&mut img, Rect::at(0, 0).of_size(600, 40), Luma([0]));
     let status_scale = Scale::uniform(36.0);
     if let Some(battery) = context.battery {
-        let font = context
-            .fonts
-            .get("status")
-            .ok_or(anyhow!("status font not found"))?;
+        let font = get_font("status").ok_or(anyhow!("status font not found"))?;
         draw_aligned_text(
             &mut img,
             Luma([255]),
@@ -123,10 +113,7 @@ pub fn generate(context: &Context) -> Result<GrayImage> {
         );
     }
     {
-        let font = context
-            .fonts
-            .get("status")
-            .ok_or(anyhow!("status font not found"))?;
+        let font = get_font("status").ok_or(anyhow!("status font not found"))?;
         draw_aligned_text(
             &mut img,
             Luma([255]),
@@ -140,10 +127,7 @@ pub fn generate(context: &Context) -> Result<GrayImage> {
 
     if let Ok(forecast) = qweather::get_3d_forecast() {
         if forecast.len() == 3 {
-            let font = context
-                .fonts
-                .get("weather")
-                .ok_or(anyhow!("main font not found"))?;
+            let font = get_font("weather").ok_or(anyhow!("main font not found"))?;
             let y = 725;
             let x = vec![100, 300, 500];
             let color = Luma([96]);

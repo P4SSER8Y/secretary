@@ -1,8 +1,9 @@
 use anyhow::{anyhow, Result};
 use chrono::{DateTime, Local, NaiveTime};
 use once_cell::sync::Lazy;
-use serde::{Deserialize, Serialize};
+use serde::{Serialize, Deserialize};
 use std::sync::Mutex;
+use log::info;
 
 #[derive(Debug)]
 struct Config {
@@ -154,6 +155,7 @@ pub fn set_key(key: String) {
 
 #[allow(dead_code)]
 pub fn update_24h() -> Result<()> {
+    info!("start fetch 24h");
     let cfg = CONFIG.lock().or(Err(anyhow!("failed to acquire lock")))?;
     let params = &[
         ("location", cfg.location.as_ref().unwrap()),
@@ -194,6 +196,7 @@ pub fn update_24h() -> Result<()> {
 
 #[allow(dead_code)]
 pub fn update_3d() -> Result<()> {
+    info!("start update 3d");
     let cfg = CONFIG.lock().or(Err(anyhow!("failed to acquire lock")))?;
     let params = &[
         ("location", cfg.location.as_ref().unwrap()),

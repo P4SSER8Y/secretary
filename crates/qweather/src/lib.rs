@@ -3,18 +3,18 @@ mod api;
 use std::str::FromStr;
 
 use anyhow::anyhow;
+use figment::Figment;
+use log::{error, info};
 use once_cell::sync::OnceCell;
-use rocket::{info, Build, Rocket, error};
 
 static SCHEDULER: OnceCell<cron::Schedule> = OnceCell::new();
 
 pub use api::get_24h_forcast;
 pub use api::get_3d_forecast;
 
-pub fn build(build: Rocket<Build>) -> Rocket<Build> {
+pub fn init(figment: &Figment) {
     SCHEDULER.get_or_init(|| {
-        let value = build
-            .figment()
+        let value = figment
             .find_value("weather.cron")
             .expect("weather.cron not configured");
         let exp = value.as_str().expect("weather.cron format is invalid");
@@ -22,8 +22,7 @@ pub fn build(build: Rocket<Build>) -> Rocket<Build> {
         return cron::Schedule::from_str(exp).expect("weather.cron format is invalid");
     });
     api::set_location(
-        build
-            .figment()
+        figment
             .find_value("weather.location")
             .expect("weather.location not found")
             .into_string()
@@ -31,8 +30,7 @@ pub fn build(build: Rocket<Build>) -> Rocket<Build> {
             .unwrap(),
     );
     api::set_key(
-        build
-            .figment()
+        figment
             .find_value("weather.key")
             .expect("weather.key not found")
             .into_string()
@@ -40,7 +38,6 @@ pub fn build(build: Rocket<Build>) -> Rocket<Build> {
             .unwrap(),
     );
     std::thread::spawn(main);
-    return build;
 }
 
 fn main() {

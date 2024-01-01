@@ -4,7 +4,6 @@ use rocket::{info, error};
 #[macro_use]
 extern crate rocket;
 
-mod database;
 mod kindle;
 mod qweather;
 
@@ -12,7 +11,7 @@ mod qweather;
 fn rocket() -> _ {
     let wtf = rocket::build();
 
-    let db = database::Db::new();
+    let db = utils::database::Db::new();
     if let Ok(launch) = db.get::<String>("launch") {
         info!("last launch at {:?}", launch);
     } else {

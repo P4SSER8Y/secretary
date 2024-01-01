@@ -1,13 +1,11 @@
 use std::collections::HashMap;
-
 use chrono::Datelike;
 use image::{GrayImage, Luma};
 use imageproc::{rect::Rect, drawing};
 use once_cell::sync::Lazy;
 use rusttype::Scale;
-
-use super::shared::*;
 use anyhow::{anyhow, Result};
+use super::shared::*;
 
 static MAP_WEEKDAY: Lazy<HashMap<u8, &'static str>> = Lazy::new(|| {
     let mut map = HashMap::new();
@@ -26,7 +24,7 @@ pub fn generate(context: &Context) -> Result<GrayImage> {
     let battery = context.battery;
     let now = context.now.ok_or(anyhow!("time not provided"))?;
     let mut img = GrayImage::new(600, 800);
-    let font = context.fonts.get("main").ok_or(anyhow!("main font not found"))?;
+    let font = get_font("main").ok_or(anyhow!("main font not found"))?;
 
     let rect = Rect::at(0, 0).of_size(img.width(), img.height());
     drawing::draw_filled_rect_mut(&mut img, rect, Luma([255]));

@@ -1,7 +1,5 @@
 use std::collections::HashMap;
 
-use crate::qweather;
-
 use super::shared::*;
 use anyhow::{anyhow, Result};
 use chrono::Datelike;
@@ -59,10 +57,7 @@ pub fn generate(context: &Context) -> Result<GrayImage> {
     let mut img = GrayImage::new(600, 800);
 
     let now = context.now.ok_or(anyhow!("time not provided"))?;
-    let font = context
-        .fonts
-        .get("main")
-        .ok_or(anyhow!("main font not found"))?;
+    let font = get_font("main").ok_or(anyhow!("main font not found"))?;
 
     let rect = Rect::at(0, 0).of_size(img.width(), img.height());
     drawing::draw_filled_rect_mut(&mut img, rect, Luma([255]));

@@ -2,6 +2,8 @@ use std::collections::HashMap;
 
 use image::{GrayImage, Luma};
 use imageproc::{drawing, rect::Rect};
+use log::info;
+use once_cell::sync::OnceCell;
 use rusttype::{Font, Scale};
 
 #[allow(dead_code)]
@@ -42,8 +44,29 @@ pub fn draw_aligned_text<'a>(
     return Rect::at(x, y).of_size(size.0.try_into().unwrap(), size.1.try_into().unwrap());
 }
 
-pub struct Context<'a> {
+pub struct Context {
     pub battery: Option<usize>,
     pub now: Option<chrono::DateTime<chrono::Local>>,
-    pub fonts: &'a HashMap<String, Font<'a>>,
+}
+
+static FONTS: OnceCell<HashMap<String, Font>> = OnceCell::new();
+pub fn load_fonts(fonts: HashMap<String, String>) {
+    FONTS.get_or_init(|| {
+        let mut map = HashMap::new();
+        for x in fonts.iter() {
+            let name = x.0;
+            let path = x.1;
+            info!("loading {}: {}", name, path);
+            let data = std::fs::read(&path).expect(&format!("failed to load {}", path));
+            let font = Font::try_from_vec(data).unwrap_or_else(|| {
+                panic!("cannot load {}", path);
+            });
+            map.insert(name.to_string(), font);
+        }
+        return map;
+    });
+}
+
+pub fn get_font(name: &str) -> Option<&Font> {
+    return FONTS.get().unwrap().get(name);
 }
