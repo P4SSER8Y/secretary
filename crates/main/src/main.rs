@@ -10,7 +10,9 @@ mod qweather;
 #[launch]
 fn rocket() -> _ {
     let wtf = rocket::build();
-
+    
+    bark::build(wtf.figment());
+    
     let db = utils::database::Db::new();
     if let Ok(launch) = db.get::<String>("launch") {
         info!("last launch at {:?}", launch);

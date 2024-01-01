@@ -13,3 +13,6 @@ fonts.status = ""
 cron = ""
 location = ""
 key = ""
+
+[default.bark]
+url = ""
