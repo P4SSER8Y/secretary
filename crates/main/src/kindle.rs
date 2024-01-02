@@ -1,5 +1,6 @@
 use chrono::{self, Local, NaiveDate};
 use kindle::Context;
+use rocket::response::status::NotFound;
 use rocket::{http::ContentType, Build, Rocket};
 use std::collections::HashMap;
 use std::io::Cursor;
@@ -29,11 +30,11 @@ pub fn build(base: &'static str, build: Rocket<Build>) -> Rocket<Build> {
 }
 
 #[get("/?<battery>&<style>&<now>")]
-fn main(
+async fn main(
     battery: Option<usize>,
     style: Option<usize>,
     now: Option<String>,
-) -> (ContentType, Vec<u8>) {
+) -> Result<(ContentType, Vec<u8>), NotFound<()>> {
     info!("{:?}", now);
     let now = match now {
         Some(raw) => {
@@ -68,11 +69,11 @@ fn main(
             let mut buffer: Vec<u8> = Vec::new();
             img.write_to(&mut Cursor::new(&mut buffer), image::ImageOutputFormat::Png)
                 .expect("failed to encoded image");
-            return (ContentType::PNG, buffer);
+            return Ok((ContentType::PNG, buffer));
         }
         Err(e) => {
             error!("{:?}", e);
-            return (ContentType::Text, format!("{:?}", e).into_bytes());
+            return Err(NotFound(()));
         }
     }
 }
