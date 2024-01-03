@@ -52,6 +52,13 @@ async fn main(
     if let Some(battery) = battery {
         let db = utils::database::Db::new();
         let _ = db.set("kindle/battery", &battery);
+        if battery < 20 {
+            bark::send(bark::Message {
+                body: &format!("kindle's battery is low: {}%", battery),
+                ..Default::default()
+            })
+            .await;
+        }
     } else {
         let db = utils::database::Db::new();
         battery = db.get("kindle/battery").unwrap_or(None);

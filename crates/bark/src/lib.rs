@@ -69,17 +69,12 @@ pub fn build(figment: &figment::Figment) {
             CONFIG.get_or_init(|| cfg);
         }
     }
-    send(&Message {
-        body: "Hello World",
-        title: Some("Lighter"),
-        ..Default::default()
-    });
 }
 
-pub fn send(msg: &Message) {
+pub async fn send(msg: Message<'_>) {
     let url = &CONFIG.get().unwrap().url;
-    let client = reqwest::blocking::Client::new();
-    let response = client.post(url).json(msg).send();
+    let client = reqwest::Client::new();
+    let response = client.post(url).json(&msg).send().await;
     if let Err(response) = response {
         error!("failed to bark: {:?}", response);
     }

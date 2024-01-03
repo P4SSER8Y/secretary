@@ -1,5 +1,6 @@
 use chrono::Local;
-use rocket::{info, error};
+use futures::join;
+use rocket::{error, info};
 
 #[macro_use]
 extern crate rocket;
@@ -7,12 +8,18 @@ extern crate rocket;
 mod kindle;
 mod qweather;
 
-#[launch]
-fn rocket() -> _ {
+#[rocket::main]
+async fn main() -> Result<(), rocket::Error> {
     let wtf = rocket::build();
-    
+
     bark::build(wtf.figment());
-    
+    bark::send(bark::Message {
+        body: "Hello World",
+        title: Some("Lighter"),
+        ..Default::default()
+    })
+    .await;
+
     let db = utils::database::Db::new();
     if let Ok(launch) = db.get::<String>("launch") {
         info!("last launch at {:?}", launch);
@@ -26,5 +33,7 @@ fn rocket() -> _ {
 
     let wtf = qweather::build(wtf);
     let wtf = kindle::build("/kindle", wtf);
-    wtf
+    let task_wtf = wtf.ignite().await?.launch();
+    let _ = join!(task_wtf);
+    Ok(())
 }
