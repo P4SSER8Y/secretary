@@ -12,7 +12,7 @@ static SCHEDULER: OnceCell<cron::Schedule> = OnceCell::new();
 pub use api::get_24h_forcast;
 pub use api::get_3d_forecast;
 
-pub fn init(figment: &Figment) {
+pub async fn init(figment: &Figment) {
     SCHEDULER.get_or_init(|| {
         let value = figment
             .find_value("weather.cron")
@@ -28,7 +28,7 @@ pub fn init(figment: &Figment) {
             .into_string()
             .ok_or(anyhow!("weather.location not found"))
             .unwrap(),
-    );
+    ).await;
     api::set_key(
         figment
             .find_value("weather.key")
@@ -36,18 +36,18 @@ pub fn init(figment: &Figment) {
             .into_string()
             .ok_or(anyhow!("weather.key not found"))
             .unwrap(),
-    );
-    std::thread::spawn(main);
+    ).await;
+    tokio::spawn(main());
 }
 
-fn main() {
+async fn main() {
     info!("start cron");
     let mut iter = SCHEDULER.get().unwrap().upcoming(chrono::Local);
     loop {
-        if let Err(err) = api::update_24h() {
+        if let Err(err) = api::update_24h().await {
             error!("failed to update weather of 24 hours: {:}", err.to_string());
         }
-        if let Err(err) = api::update_3d() {
+        if let Err(err) = api::update_3d().await {
             error!("failed to update weather of 3 days: {:}", err.to_string());
         }
         let next = iter.next();
@@ -59,9 +59,9 @@ fn main() {
                 next,
                 duration.num_seconds()
             );
-            std::thread::sleep(std::time::Duration::from_secs(
+            tokio::time::sleep(std::time::Duration::from_secs(
                 duration.num_seconds().try_into().unwrap(),
-            ));
+            )).await;
         } else {
             break;
         }

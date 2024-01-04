@@ -1,9 +1,9 @@
 use anyhow::{anyhow, Result};
 use chrono::{DateTime, Local, NaiveTime};
-use once_cell::sync::Lazy;
-use serde::{Serialize, Deserialize};
-use std::sync::Mutex;
 use log::info;
+use once_cell::sync::Lazy;
+use serde::{Deserialize, Serialize};
+use tokio::sync::Mutex;
 
 #[derive(Debug)]
 struct Config {
@@ -31,8 +31,8 @@ pub struct Forcast24H {
     pub texts: Vec<String>,
 }
 
-pub fn get_24h_forcast() -> Result<Forcast24H> {
-    let data = DATA_24H.lock().or(Err(anyhow!("cannot acquire lock")))?;
+pub async fn get_24h_forcast() -> Result<Forcast24H> {
+    let data = DATA_24H.lock().await;
     if data.len() == 0 {
         return Err(anyhow!("no data yet"));
     }
@@ -51,8 +51,8 @@ pub fn get_24h_forcast() -> Result<Forcast24H> {
     });
 }
 
-pub fn get_3d_forecast() -> Result<Vec<DailyForecast>> {
-    let data = DATA_3D.lock().or(Err(anyhow!("cannot acquire lock")))?;
+pub async fn get_3d_forecast() -> Result<Vec<DailyForecast>> {
+    let data = DATA_3D.lock().await;
     if data.len() == 0 {
         return Err(anyhow!("no data yet"));
     }
@@ -133,8 +133,8 @@ impl std::convert::TryFrom<&DailyForecastRaw> for DailyForecast {
     }
 }
 
-pub fn set_location(location: String) {
-    let mut cfg = CONFIG.lock().unwrap();
+pub async fn set_location(location: String) {
+    let mut cfg = CONFIG.lock().await;
     if location.len() > 0 {
         cfg.location = Some(location);
     } else {
@@ -143,8 +143,8 @@ pub fn set_location(location: String) {
     info!("update {:?}", cfg);
 }
 
-pub fn set_key(key: String) {
-    let mut cfg = CONFIG.lock().unwrap();
+pub async fn set_key(key: String) {
+    let mut cfg = CONFIG.lock().await;
     if key.len() > 0 {
         cfg.key = Some(key);
     } else {
@@ -154,18 +154,19 @@ pub fn set_key(key: String) {
 }
 
 #[allow(dead_code)]
-pub fn update_24h() -> Result<()> {
+pub async fn update_24h() -> Result<()> {
     info!("start fetch 24h");
-    let cfg = CONFIG.lock().or(Err(anyhow!("failed to acquire lock")))?;
+    let cfg = CONFIG.lock().await;
     let params = &[
         ("location", cfg.location.as_ref().unwrap()),
         ("key", cfg.key.as_ref().unwrap()),
     ];
     let url = reqwest::Url::parse_with_params(API_URL_24H, params).unwrap();
     info!("{}", url);
-    let query = reqwest::blocking::get(url).or(Err(anyhow!("cannot fetch {:#?}", API_URL_24H)))?;
+    let query = reqwest::get(url).await.or(Err(anyhow!("cannot fetch {:#?}", API_URL_24H)))?;
     let bytes = query
         .bytes()
+        .await
         .or(Err(anyhow!("failed to turn content into bytes")))?
         .to_vec();
     let json = serde_json::from_slice::<serde_json::Value>(&bytes)
@@ -181,7 +182,7 @@ pub fn update_24h() -> Result<()> {
     if code != "200" {
         return Err(anyhow!("query failed"));
     }
-    let mut raw = DATA_24H.lock().or(Err(anyhow!("failed to acquire lock")))?;
+    let mut raw = DATA_24H.lock().await;
 
     let hourly = json.get("hourly").ok_or(anyhow!("hourly not found"))?;
     let hour_forcast_raw: Vec<HourlyForecastRaw> = serde_json::from_value(hourly.clone())?;
@@ -195,17 +196,18 @@ pub fn update_24h() -> Result<()> {
 }
 
 #[allow(dead_code)]
-pub fn update_3d() -> Result<()> {
+pub async fn update_3d() -> Result<()> {
     info!("start update 3d");
-    let cfg = CONFIG.lock().or(Err(anyhow!("failed to acquire lock")))?;
+    let cfg = CONFIG.lock().await;
     let params = &[
         ("location", cfg.location.as_ref().unwrap()),
         ("key", cfg.key.as_ref().unwrap()),
     ];
     let url = reqwest::Url::parse_with_params(API_URL_3D, params).unwrap();
-    let query = reqwest::blocking::get(url).or(Err(anyhow!("cannot fetch {:#?}", API_URL_24H)))?;
+    let query = reqwest::get(url).await.or(Err(anyhow!("cannot fetch {:#?}", API_URL_24H)))?;
     let bytes = query
         .bytes()
+        .await
         .or(Err(anyhow!("failed to turn content into bytes")))?
         .to_vec();
     let json = serde_json::from_slice::<serde_json::Value>(&bytes)
@@ -221,7 +223,7 @@ pub fn update_3d() -> Result<()> {
     if code != "200" {
         return Err(anyhow!("query failed"));
     }
-    let mut raw = DATA_3D.lock().or(Err(anyhow!("failed to acquire lock")))?;
+    let mut raw = DATA_3D.lock().await;
 
     let daily = json.get("daily").ok_or(anyhow!("daily not found"))?;
     let daily_forecast_raw: Vec<DailyForecastRaw> = serde_json::from_value(daily.clone())?;

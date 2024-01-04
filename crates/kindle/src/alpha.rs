@@ -20,7 +20,7 @@ static MAP_WEEKDAY: Lazy<HashMap<u8, &'static str>> = Lazy::new(|| {
     map
 });
 
-pub fn generate(context: &Context) -> Result<GrayImage> {
+pub async fn generate(context: &Context) -> Result<GrayImage> {
     let battery = context.battery;
     let now = context.now.ok_or(anyhow!("time not provided"))?;
     let mut img = GrayImage::new(600, 800);

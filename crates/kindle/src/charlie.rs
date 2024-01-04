@@ -53,7 +53,7 @@ static MAP_WEEKDAY: Lazy<HashMap<u32, &'static str>> = Lazy::new(|| {
     return map;
 });
 
-pub fn generate(context: &Context) -> Result<GrayImage> {
+pub async fn generate(context: &Context) -> Result<GrayImage> {
     let mut img = GrayImage::new(600, 800);
 
     let now = context.now.ok_or(anyhow!("time not provided"))?;
@@ -94,7 +94,7 @@ pub fn generate(context: &Context) -> Result<GrayImage> {
         (AlignHorizontal::Center, AlignVertical::Center),
     );
 
-    if let Ok(forcast) = qweather::get_24h_forcast() {
+    if let Ok(forcast) = qweather::get_24h_forcast().await {
         draw_aligned_text(
             &mut img,
             Luma([128]),

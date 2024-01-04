@@ -71,7 +71,7 @@ async fn main(
     info!("now={:?}", context.now);
     info!("battery={:?}", context.battery);
 
-    match kindle::factory(style, &context) {
+    match kindle::factory(style, &context).await {
         Ok(img) => {
             let mut buffer: Vec<u8> = Vec::new();
             img.write_to(&mut Cursor::new(&mut buffer), image::ImageOutputFormat::Png)

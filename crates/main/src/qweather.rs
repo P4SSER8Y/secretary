@@ -1,6 +1,6 @@
 use rocket::{Build, Rocket};
 
-pub fn build(build: Rocket<Build>) -> Rocket<Build> {
-    qweather::init(build.figment());
+pub async fn build(build: Rocket<Build>) -> Rocket<Build> {
+    qweather::init(build.figment()).await;
     return build;
 }

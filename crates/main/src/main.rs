@@ -1,5 +1,4 @@
 use chrono::Local;
-use futures::join;
 use rocket::{error, info};
 
 #[macro_use]
@@ -29,11 +28,11 @@ async fn main() -> Result<(), rocket::Error> {
     if let Err(_) = db.set("launch", &Local::now().to_rfc3339()) {
         error!("last launch not found");
     }
-    let _ = db.flush();
 
-    let wtf = qweather::build(wtf);
+    let wtf = qweather::build(wtf).await;
     let wtf = kindle::build("/kindle", wtf);
-    let task_wtf = wtf.ignite().await?.launch();
-    let _ = join!(task_wtf);
+    
+    wtf.ignite().await?.launch().await?;
+    let _ = db.flush();
     Ok(())
 }

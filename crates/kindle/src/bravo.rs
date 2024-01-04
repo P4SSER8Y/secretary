@@ -23,7 +23,7 @@ static MAP_WEEKDAY: Lazy<HashMap<u8, &'static str>> = Lazy::new(|| {
     map
 });
 
-pub fn generate(context: &Context) -> Result<GrayImage> {
+pub async fn generate(context: &Context) -> Result<GrayImage> {
     let font = get_font("main").ok_or(anyhow!("main font not found"))?;
     let now = context.now.ok_or(anyhow!("time not provided"))?;
     static MAP: Lazy<HashMap<u8, &'static str>> = Lazy::new(|| {
@@ -125,7 +125,7 @@ pub fn generate(context: &Context) -> Result<GrayImage> {
         );
     }
 
-    if let Ok(forecast) = qweather::get_3d_forecast() {
+    if let Ok(forecast) = qweather::get_3d_forecast().await {
         if forecast.len() == 3 {
             let font = get_font("weather").ok_or(anyhow!("main font not found"))?;
             let y = 725;
