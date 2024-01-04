@@ -9,15 +9,17 @@ mod qweather;
 
 #[rocket::main]
 async fn main() -> Result<(), rocket::Error> {
+    let env = pretty_env_logger::env_logger::Env::default().default_filter_or("INFO");
+    pretty_env_logger::formatted_timed_builder().parse_env(env).init();
+
     let wtf = rocket::build();
 
     bark::build(wtf.figment());
-    bark::send(bark::Message {
+    tokio::spawn(bark::send(bark::Message {
         body: "Hello World",
         title: Some("Lighter"),
         ..Default::default()
-    })
-    .await;
+    }));
 
     let db = utils::database::Db::new();
     if let Ok(launch) = db.get::<String>("launch") {
@@ -31,7 +33,7 @@ async fn main() -> Result<(), rocket::Error> {
 
     let wtf = qweather::build(wtf).await;
     let wtf = kindle::build("/kindle", wtf);
-    
+
     wtf.ignite().await?.launch().await?;
     let _ = db.flush();
     Ok(())

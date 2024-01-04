@@ -13,8 +13,9 @@ pub use shared::{load_fonts, Context};
 static DEFAULT_STYLE: OnceCell<Option<usize>> = OnceCell::new();
 
 pub fn set_default_style(style: Option<usize>) {
-    DEFAULT_STYLE.get_or_init(|| style);
-    info!("{:#?}", DEFAULT_STYLE.get());
+    if let Some(style) = DEFAULT_STYLE.get_or_init(|| style) {
+        info!("kindle's default style={}", style);
+    }
 }
 
 pub async fn factory(style: Option<usize>, context: &Context) -> Result<GrayImage> {
