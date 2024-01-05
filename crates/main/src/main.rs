@@ -5,12 +5,12 @@ use rocket::{error, info};
 extern crate rocket;
 
 mod kindle;
+mod logger;
 mod qweather;
 
 #[rocket::main]
 async fn main() -> Result<(), rocket::Error> {
-    let env = pretty_env_logger::env_logger::Env::default().default_filter_or("INFO");
-    pretty_env_logger::formatted_timed_builder().parse_env(env).init();
+    logger::init();
 
     let wtf = rocket::build();
 
