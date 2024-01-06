@@ -1,6 +1,10 @@
 use anyhow::{anyhow, Result};
 
 fn get_version_string() -> Result<String> {
+    let profile = std::env::var("PROFILE")?.to_lowercase();
+    if profile != "release" {
+        return Ok(format!("{}.{}", chrono::Local::now().date_naive(), profile));
+    }
     let nato_alphabet: Vec<&str> = vec![
         "alpha", "bravo", "charlie", "delta", "echo", "foxtrot", "golf", "hotel", "india",
         "juliet", "kilo", "lima", "mike", "november", "oscar", "papa", "quebec", "romeo", "sierra",
