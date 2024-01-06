@@ -1,5 +1,5 @@
 use chrono::Local;
-use rocket::{error, info};
+use rocket::{info, warn, Rocket, Build};
 
 #[macro_use]
 extern crate rocket;
@@ -8,18 +8,35 @@ mod kindle;
 mod logger;
 mod qweather;
 
+fn is_enabled(build: &Rocket<Build>, name: &str, default: bool) -> bool {
+    if let Ok(value) = build.figment().find_value(&format!("switches.{}", name)) {
+        if let Some(value) = value.to_bool() {
+            warn!(
+                "switches.{} is {}",
+                name,
+                if value { "enabled" } else { "disabled" }
+            );
+            return value;
+        }
+    }
+    error!("switches.{} is not provided", name);
+    default
+}
+
 #[rocket::main]
 async fn main() -> Result<(), rocket::Error> {
     logger::init();
 
-    let wtf = rocket::build();
+    let mut wtf = rocket::build();
 
-    bark::build(wtf.figment());
-    tokio::spawn(bark::send(bark::Message {
-        body: "Hello World",
-        title: Some("Lighter"),
-        ..Default::default()
-    }));
+    if is_enabled(&wtf, "bark", false) {
+        bark::build(wtf.figment());
+        tokio::spawn(bark::send(bark::Message {
+            body: "Hello World",
+            title: Some("Lighter"),
+            ..Default::default()
+        }));
+    }
 
     let db = utils::database::Db::new();
     if let Ok(launch) = db.get::<String>("launch") {
@@ -31,8 +48,12 @@ async fn main() -> Result<(), rocket::Error> {
         error!("last launch not found");
     }
 
-    let wtf = qweather::build(wtf).await;
-    let wtf = kindle::build("/kindle", wtf);
+    if is_enabled(&wtf, "weather", false) {
+        wtf = qweather::build(wtf).await;
+    }
+    if is_enabled(&wtf, "kindle", false) {
+        wtf = kindle::build("/kindle", wtf);
+    }
 
     wtf.ignite().await?.launch().await?;
     let _ = db.flush();
