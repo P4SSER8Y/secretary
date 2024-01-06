@@ -1,5 +1,6 @@
 use chrono::Local;
-use rocket::{info, warn, Rocket, Build};
+use log::{info, warn};
+use rocket::{Rocket, Build};
 
 #[macro_use]
 extern crate rocket;
@@ -7,6 +8,8 @@ extern crate rocket;
 mod kindle;
 mod logger;
 mod qweather;
+
+pub const VERSION: &'static str = include_str!(concat!(env!("OUT_DIR"), "/version"));
 
 fn is_enabled(build: &Rocket<Build>, name: &str, default: bool) -> bool {
     if let Ok(value) = build.figment().find_value(&format!("switches.{}", name)) {
@@ -28,6 +31,7 @@ async fn main() -> Result<(), rocket::Error> {
     logger::init();
 
     let mut wtf = rocket::build();
+    info!("build version: {}", VERSION);
 
     if is_enabled(&wtf, "bark", false) {
         bark::build(wtf.figment());
