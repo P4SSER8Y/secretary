@@ -21,6 +21,7 @@ tokio = "1.35.1"
 futures = "0.3.30"
 log = "0.4.20"
 env_logger = "0.10.1"
+clap = { version = "4.4.13", features = ["derive"] }
 
 [build-dependencies]
 anyhow = "1.0.78"

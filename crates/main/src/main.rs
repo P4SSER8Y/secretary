@@ -1,6 +1,7 @@
 use chrono::Local;
+use clap::{Parser, Subcommand};
 use log::{info, warn};
-use rocket::{Rocket, Build};
+use rocket::{Build, Rocket};
 
 #[macro_use]
 extern crate rocket;
@@ -10,6 +11,21 @@ mod logger;
 mod qweather;
 
 pub const VERSION: &'static str = include_str!(concat!(env!("OUT_DIR"), "/version"));
+
+#[derive(Parser)]
+#[command(author, version = VERSION)]
+struct Cli {
+    #[command(subcommand)]
+    command: Option<Commands>,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    /// launch server
+    Go,
+    /// print version and exit
+    Version,
+}
 
 fn is_enabled(build: &Rocket<Build>, name: &str, default: bool) -> bool {
     if let Ok(value) = build.figment().find_value(&format!("switches.{}", name)) {
@@ -26,10 +42,7 @@ fn is_enabled(build: &Rocket<Build>, name: &str, default: bool) -> bool {
     default
 }
 
-#[rocket::main]
-async fn main() -> Result<(), rocket::Error> {
-    logger::init();
-
+async fn go() -> Result<(), rocket::Error> {
     let mut wtf = rocket::build();
     info!("build version: {}", VERSION);
 
@@ -62,4 +75,19 @@ async fn main() -> Result<(), rocket::Error> {
     wtf.ignite().await?.launch().await?;
     let _ = db.flush();
     Ok(())
+}
+
+#[rocket::main]
+async fn main() -> Result<(), rocket::Error> {
+    logger::init();
+
+    let cli = Cli::parse();
+    match cli.command {
+        Some(Commands::Version) => {
+            println!("{}", VERSION);
+            Ok(())
+        }
+        Some(Commands::Go) => go().await,
+        None => go().await,
+    }
 }
