@@ -16,3 +16,6 @@ Send some message to iPhone via [bark](https://github.com/finb/bark).
 ## qweather
 
 Fetch weather forecast, powered by [QWeather](https://dev.qweather.com/).
+
+## let_server_run
+Communicate via Wechat, powered by [LetServerRun](https://letserver.run/).

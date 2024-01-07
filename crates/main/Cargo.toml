@@ -10,6 +10,7 @@ bark = { path = "../bark" }
 utils = { path = "../utils" }
 kindle = { path = "../kindle" }
 qweather = { path = "../qweather" }
+let_server_run = { path = "../let_server_run" }
 chrono = "0.4.31"
 rocket = "0.5.0"
 anyhow = "1.0.78"

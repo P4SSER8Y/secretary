@@ -7,6 +7,7 @@ use rocket::{Build, Rocket};
 extern crate rocket;
 
 mod kindle;
+mod let_server_run;
 mod logger;
 mod qweather;
 
@@ -65,6 +66,9 @@ async fn go() -> Result<(), rocket::Error> {
         error!("last launch not found");
     }
 
+    if is_enabled(&wtf, "let_server_run", false) {
+        wtf = let_server_run::build(wtf).await;
+    }
     if is_enabled(&wtf, "weather", false) {
         wtf = qweather::build(wtf).await;
     }
