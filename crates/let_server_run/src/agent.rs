@@ -8,9 +8,11 @@ pub struct Config {
 }
 
 pub async fn go(config: Config) {
+    use tokio::time::{sleep, Duration, Instant};
     let agent = Agent::from(&config);
+    let mut clock = tokio::time::interval_at(Instant::now(), Duration::from_secs(60));
+    clock.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     loop {
-        use tokio::time::{sleep, Duration};
         let job = agent.fetch_job().await;
         log::debug!("fetch job: {:?}", job);
         match job {
@@ -19,11 +21,11 @@ pub async fn go(config: Config) {
                 sleep(Duration::from_secs(1)).await;
             }
             Ok(None) => {
-                sleep(Duration::from_secs(60)).await;
+                clock.tick().await;
             }
             Err(err) => {
                 log::error!("failed to fetch job: {:?}", err);
-                sleep(Duration::from_secs(60)).await;
+                clock.tick().await;
             }
         }
     }
