@@ -1,6 +1,7 @@
-use anyhow::Result;
 use serde::Deserialize;
 use serde_json::json;
+
+mod executor;
 
 #[derive(Deserialize, Debug)]
 pub struct Config {
@@ -31,8 +32,21 @@ pub async fn go(config: Config) {
     }
 }
 
-async fn execute(agent: Agent, job: Job) -> Result<(), AgentError> {
-    todo!("cannot execute {}", job.message);
+async fn execute(agent: Agent, job: Job) -> Result<(), anyhow::Error> {
+    match executor::execute(&job.message).await {
+        Ok(result) => {
+            let _ = agent
+                .report_job_status(&job, JobStatus::Succeed, &result)
+                .await;
+            Ok(())
+        }
+        Err(err) => {
+            let _ = agent
+                .report_job_status(&job, JobStatus::Fail, &err.to_string())
+                .await;
+            Err(err)
+        }
+    }
 }
 
 #[derive(Deserialize, Debug)]
@@ -141,7 +155,7 @@ impl Agent {
     async fn report_job_status(
         self: &Self,
         job: &Job,
-        status: &JobStatus,
+        status: JobStatus,
         result: &str,
     ) -> Result<(), AgentError> {
         let status = match status {
@@ -149,6 +163,7 @@ impl Agent {
             JobStatus::Fail => "fail",
             JobStatus::Running => "running",
         };
+        log::info!("finish job: {:?} {}: {}", job, status, result);
         let url = format!("https://api.letserver.run/agent/jobs/{}/{}", job.id, status);
         let client = self.client.as_ref().ok_or(AgentError::ClientNotValid)?;
         let response = client

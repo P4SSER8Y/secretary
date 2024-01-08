@@ -1084,6 +1084,7 @@ dependencies = [
  "cron",
  "figment",
  "log",
+ "nom",
  "reqwest",
  "serde",
  "serde_json",
