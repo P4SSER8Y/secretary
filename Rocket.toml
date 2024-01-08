@@ -6,6 +6,7 @@ port = 8000
 kindle = true
 weather = true
 bark = true
+let_server_run = true
 
 [default.kindle]
 style = "<0,1,2>"
@@ -14,7 +15,7 @@ fonts.weather = ""
 fonts.status = ""
 
 [default.weather]
-cron = ""
+cron = "" # second minute hour day month day_of_week year
 location = ""
 key = ""
 

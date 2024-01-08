@@ -1,7 +1,10 @@
 use chrono::Local;
 use clap::{Parser, Subcommand};
 use log::{info, warn};
-use rocket::{Build, Rocket};
+use rocket::figment::{
+    providers::{Format, Toml},
+    Figment,
+};
 
 #[macro_use]
 extern crate rocket;
@@ -28,8 +31,8 @@ enum Commands {
     Version,
 }
 
-fn is_enabled(build: &Rocket<Build>, name: &str, default: bool) -> bool {
-    if let Ok(value) = build.figment().find_value(&format!("switches.{}", name)) {
+fn is_enabled(config: &Figment, name: &str, default: bool) -> bool {
+    if let Ok(value) = config.find_value(&format!("switches.{}", name)) {
         if let Some(value) = value.to_bool() {
             warn!(
                 "switches.{} is {}",
@@ -43,12 +46,23 @@ fn is_enabled(build: &Rocket<Build>, name: &str, default: bool) -> bool {
     default
 }
 
+#[cfg(debug_assertions)]
+const PROFILE: &str = "debug";
+
+#[cfg(not(debug_assertions))]
+const PROFILE: &str = "release";
+
 async fn go() -> Result<(), rocket::Error> {
+    let config = Figment::new()
+        .merge(Toml::file("Rocket.toml").nested())
+        .merge(Toml::file("Local.toml").nested())
+        .select(PROFILE);
+
     let mut wtf = rocket::build();
     info!("build version: {}", VERSION);
 
-    if is_enabled(&wtf, "bark", false) {
-        bark::build(wtf.figment());
+    if is_enabled(&config, "bark", false) {
+        bark::build(&config);
         tokio::spawn(bark::send(bark::Message {
             body: "Hello World",
             title: Some("Lighter"),
@@ -66,14 +80,14 @@ async fn go() -> Result<(), rocket::Error> {
         error!("last launch not found");
     }
 
-    if is_enabled(&wtf, "let_server_run", false) {
-        wtf = let_server_run::build(wtf).await;
+    if is_enabled(&config, "let_server_run", false) {
+        wtf = let_server_run::build(wtf, &config).await;
     }
-    if is_enabled(&wtf, "weather", false) {
-        wtf = qweather::build(wtf).await;
+    if is_enabled(&config, "weather", false) {
+        wtf = qweather::build(wtf, &config).await;
     }
-    if is_enabled(&wtf, "kindle", false) {
-        wtf = kindle::build("/kindle", wtf);
+    if is_enabled(&config, "kindle", false) {
+        wtf = kindle::build("/kindle", wtf, &config);
     }
 
     wtf.ignite().await?.launch().await?;

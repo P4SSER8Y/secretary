@@ -1,14 +1,14 @@
 use chrono::{self, Local, NaiveDate};
 use kindle::Context;
+use rocket::figment::Figment;
 use rocket::response::status::NotFound;
 use rocket::{http::ContentType, Build, Rocket};
 use std::collections::HashMap;
 use std::io::Cursor;
 
-pub fn build(base: &'static str, build: Rocket<Build>) -> Rocket<Build> {
+pub fn build(base: &'static str, build: Rocket<Build>, config: &Figment) -> Rocket<Build> {
     kindle::set_default_style(
-        build
-            .figment()
+        config
             .find_value("kindle.style")
             .ok()
             .and_then(|x| x.to_i128().and_then(|x| Some(x as usize))),
