@@ -14,7 +14,7 @@ pub fn build(base: &'static str, build: Rocket<Build>, config: &Figment) -> Rock
             .and_then(|x| x.to_i128().and_then(|x| Some(x as usize))),
     );
     let mut font_map = HashMap::new();
-    let list = build.figment().find_value("kindle.fonts");
+    let list = config.find_value("kindle.fonts");
     if let Ok(list) = list {
         if let Some(list) = list.as_dict() {
             for item in list {
