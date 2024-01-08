@@ -1,7 +1,7 @@
 use nom::{
     branch::alt,
     bytes::complete::{is_a, is_not, tag, take},
-    character::complete::{alphanumeric1, multispace0, multispace1},
+    character::complete::{multispace0, multispace1},
     combinator::{all_consuming, peek, recognize},
     multi::many0,
     sequence::{delimited, pair, preceded, tuple},
@@ -38,7 +38,7 @@ pub fn parser<'a>(raw: &'a str) -> anyhow::Result<(&'a str, Vec<&'a str>)> {
     match all_consuming(delimited(
         multispace0,
         pair(
-            alphanumeric1,
+            parser_escaped_identity(" \r\n\t\\"),
             many0(preceded(
                 multispace1,
                 alt((

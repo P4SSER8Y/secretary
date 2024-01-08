@@ -6,6 +6,7 @@ mod executor;
 
 #[derive(Deserialize, Debug)]
 pub struct Config {
+    pub interval: u64,
     pub token: String,
     pub executors: HashMap<String, executor::ExecutorType>,
 }
@@ -13,7 +14,7 @@ pub struct Config {
 pub async fn go(config: Config) {
     use tokio::time::{sleep, Duration, Instant};
     let agent = Agent::from(&config);
-    let mut clock = tokio::time::interval_at(Instant::now(), Duration::from_secs(60));
+    let mut clock = tokio::time::interval_at(Instant::now(), Duration::from_secs(config.interval));
     clock.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     let executors = Arc::new(config.executors);
     for item in executors.as_ref() {
