@@ -23,3 +23,6 @@ url = ""
 
 [default.let_server_run]
 token = ""
+
+[default.let_server_run.executors]
+echo = { t = "echo", c = "" }

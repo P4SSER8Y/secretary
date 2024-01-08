@@ -1,11 +1,13 @@
 use serde::Deserialize;
 use serde_json::json;
+use std::{collections::HashMap, sync::Arc};
 
 mod executor;
 
 #[derive(Deserialize, Debug)]
 pub struct Config {
     pub token: String,
+    pub executors: HashMap<String, executor::ExecutorType>,
 }
 
 pub async fn go(config: Config) {
@@ -13,12 +15,16 @@ pub async fn go(config: Config) {
     let agent = Agent::from(&config);
     let mut clock = tokio::time::interval_at(Instant::now(), Duration::from_secs(60));
     clock.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    let executors = Arc::new(config.executors);
+    for item in executors.as_ref() {
+        log::info!("alias executor {} to {:?}", item.0, item.1);
+    }
     loop {
         let job = agent.fetch_job().await;
         log::debug!("fetch job: {:?}", job);
         match job {
             Ok(Some(job)) => {
-                tokio::spawn(execute(agent.clone(), job));
+                tokio::spawn(execute(agent.clone(), job, executors.clone()));
                 sleep(Duration::from_secs(1)).await;
             }
             Ok(None) => {
@@ -32,8 +38,12 @@ pub async fn go(config: Config) {
     }
 }
 
-async fn execute(agent: Agent, job: Job) -> Result<(), anyhow::Error> {
-    match executor::execute(&job.message).await {
+async fn execute(
+    agent: Agent,
+    job: Job,
+    config: Arc<HashMap<String, executor::ExecutorType>>,
+) -> Result<(), anyhow::Error> {
+    match executor::execute(&job.message, config).await {
         Ok(result) => {
             let _ = agent
                 .report_job_status(&job, JobStatus::Succeed, &result)
