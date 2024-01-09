@@ -52,13 +52,9 @@ const PROFILE: &str = "debug";
 #[cfg(not(debug_assertions))]
 const PROFILE: &str = "release";
 
-async fn go() -> Result<(), rocket::Error> {
-    let config = Figment::new()
-        .merge(Toml::file("Rocket.toml").nested())
-        .merge(Toml::file("Local.toml").nested())
-        .select(PROFILE);
-
-    let mut wtf = rocket::build();
+async fn go(config: &Figment) -> Result<(), rocket::Error> {
+    let config = rocket::Config::figment().merge(config);
+    let mut wtf = rocket::custom(&config);
     info!("build version: {}", VERSION);
 
     if is_enabled(&config, "bark", false) {
@@ -97,7 +93,17 @@ async fn go() -> Result<(), rocket::Error> {
 
 #[rocket::main]
 async fn main() -> Result<(), rocket::Error> {
-    logger::init();
+    let mut config = Figment::new()
+        .merge(Toml::file("Rocket.toml").nested())
+        .select(PROFILE);
+    if let Ok(local) = config.find_value("local") {
+        if let Some(path) = local.as_str() {
+            config = config.merge(Toml::file(path).nested()).select(PROFILE);
+        }
+    }
+
+    let level = config.find_value("level").ok().and_then(|x| x.into_string());
+    logger::init(level.as_deref());
 
     let cli = Cli::parse();
     match cli.command {
@@ -105,7 +111,6 @@ async fn main() -> Result<(), rocket::Error> {
             println!("{}", VERSION);
             Ok(())
         }
-        Some(Commands::Go) => go().await,
-        None => go().await,
+        Some(Commands::Go) | None => go(&config).await,
     }
 }

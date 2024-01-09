@@ -1,4 +1,6 @@
 [default]
+local = "Local.toml" # override configuration
+level = "INFO"
 address = "0.0.0.0"
 port = 8000
 

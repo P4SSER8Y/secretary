@@ -3,8 +3,8 @@ use log::Level;
 use once_cell::sync::Lazy;
 use std::sync::Mutex;
 
-pub fn init() {
-    let env = env_logger::Env::default().default_filter_or("INFO");
+pub fn init(level: Option<&str>) {
+    let env = env_logger::Env::default().default_filter_or(level.unwrap_or("INFO"));
     let mut build = env_logger::builder();
     build.parse_env(env);
     build.format(|buffer, record| {
