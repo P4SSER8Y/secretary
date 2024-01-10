@@ -9,6 +9,7 @@ use rocket::figment::{
 #[macro_use]
 extern crate rocket;
 
+mod fairings;
 mod kindle;
 mod let_server_run;
 mod logger;
@@ -86,7 +87,11 @@ async fn go(config: &Figment) -> Result<(), rocket::Error> {
         wtf = kindle::build("/kindle", wtf, &config);
     }
 
-    wtf.ignite().await?.launch().await?;
+    wtf.attach(fairings::RequestTimer)
+        .ignite()
+        .await?
+        .launch()
+        .await?;
     let _ = db.flush();
     Ok(())
 }
@@ -102,7 +107,10 @@ async fn main() -> Result<(), rocket::Error> {
         }
     }
 
-    let level = config.find_value("level").ok().and_then(|x| x.into_string());
+    let level = config
+        .find_value("level")
+        .ok()
+        .and_then(|x| x.into_string());
     logger::init(level.as_deref());
 
     let cli = Cli::parse();
