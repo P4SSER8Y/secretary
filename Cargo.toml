@@ -1,6 +1,10 @@
 [package]
 name = "secretary"
-version = "0.1.0"
+version.workspace = true
+edition.workspace = true
+
+[workspace.package]
+version = "0.23.2"
 edition = "2021"
 
 [workspace]
