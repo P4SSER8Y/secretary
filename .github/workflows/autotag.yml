@@ -23,6 +23,7 @@ jobs:
         with:
           tag: ${{ steps.calver.outputs.release }}
           tag_exists_error: false
+          github_token: ${{ secrets.GITHUB_TOKEN }}
 
       # - name: Deploy
       #   env:
