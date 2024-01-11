@@ -4,10 +4,25 @@ on:
 jobs:
   autotag:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
-      - name: Create git tag
-        uses: Digital-Udvikling/actions-calver@v0.3.0
+      - uses: actions/checkout@v2
+      - name: Calver
+        uses: StephaneBour/actions-calver@master
+        id: calver
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          release_branch: autotag
+          date_format: "v%Y.%m.%d"
+          version_regexp: ^\d+\.\d+\.\d+
+          release: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: rickstaa/action-create-tag@v1
+        id: "tag_create"
+        with:
+          tag: ${{ steps.calver.outputs.release }}
+          tag_exists_error: false
+
+      # - name: Deploy
+      #   env:
+      #     VERSION: ${{ steps.calver.outputs.release }}
+      #   run: ./deploy ${VERSION}
