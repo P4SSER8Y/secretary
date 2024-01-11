@@ -3,6 +3,7 @@ on:
 
 jobs:
   autotag:
+    runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
