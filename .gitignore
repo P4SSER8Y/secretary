@@ -1,4 +1,4 @@
 /target
 *.otf
 /Local.toml
-/memory
+/data

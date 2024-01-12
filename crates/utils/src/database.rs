@@ -3,7 +3,11 @@ use once_cell::sync::Lazy;
 use serde::{de::DeserializeOwned, Serialize};
 
 fn get_db() -> sled::Db {
-    static INSTANCE: Lazy<sled::Db> = Lazy::new(|| sled::open("memory").unwrap());
+    static INSTANCE: Lazy<sled::Db> = Lazy::new(|| {
+        let data = super::get_data_path();
+        let path = std::path::Path::new(data).join("memory");
+        sled::open(path).unwrap()
+    });
     return INSTANCE.clone();
 }
 

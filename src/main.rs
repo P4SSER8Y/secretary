@@ -55,6 +55,26 @@ const PROFILE: &str = "release";
 
 async fn go(config: &Figment) -> Result<(), rocket::Error> {
     let config = rocket::Config::figment().merge(config);
+    if let Ok(data) = config.find_value("data_path") {
+        if let Some(data) = data.as_str() {
+            utils::init_data_path(data);
+        }
+    }
+    let data = std::path::Path::new(utils::get_data_path());
+    if !data.exists() {
+        std::fs::create_dir_all(data).or_else(|err| Err(rocket::error::ErrorKind::Io(err)))?;
+    } else if !data.is_dir() {
+        use rocket::error::ErrorKind;
+        use rocket::figment::error::Kind;
+        return Err(ErrorKind::Config(
+            Kind::Message(format!(
+                "{} is not a valid directory",
+                data.to_str().unwrap()
+            ))
+            .into(),
+        )
+        .into());
+    }
     let mut wtf = rocket::custom(&config);
     info!("build version: {}", VERSION);
 
