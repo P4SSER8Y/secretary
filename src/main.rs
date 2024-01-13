@@ -106,6 +106,9 @@ async fn go(config: &Figment) -> Result<(), rocket::Error> {
     if is_enabled(&config, "kindle", false) {
         wtf = kindle::build("/kindle", wtf, &config);
     }
+    if is_enabled(&config, "inbox", false) {
+        wtf = inbox::build("/inbox", wtf, &config).await.unwrap();
+    }
 
     wtf.attach(fairings::RequestTimer)
         .ignite()

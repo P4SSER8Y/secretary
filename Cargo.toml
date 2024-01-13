@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 [workspace.package]
-version = "0.23.3"
+version = "0.24.0"
 edition = "2021"
 
 [workspace]
@@ -17,6 +17,7 @@ utils = { path = "crates/utils" }
 kindle = { path = "crates/kindle" }
 qweather = { path = "crates/qweather" }
 let_server_run = { path = "crates/let_server_run" }
+inbox = { path = "crates/inbox" }
 chrono = "0.4.31"
 rocket = "0.5.0"
 anyhow = "1.0.78"

@@ -1,0 +1,20 @@
+[package]
+name = "inbox"
+version.workspace = true
+edition.workspace = true
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+utils ={ path="../utils"}
+anyhow = "1.0.79"
+rocket = { version = "0.5.0", features = ["json"] }
+thiserror = "1.0.56"
+rand = "0.8.5"
+sled = "0.34.7"
+log = "0.4.20"
+serde = { version = "1.0.195", features = ["derive"] }
+serde_json = "1.0.111"
+humantime = "2.1.0"
+humantime-serde = "1.1.1"
+tokio = "1.35.1"

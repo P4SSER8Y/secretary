@@ -19,3 +19,6 @@ Fetch weather forecast, powered by [QWeather](https://dev.qweather.com/).
 
 ## let_server_run
 Communicate via Wechat, powered by [LetServerRun](https://letserver.run/).
+
+## inbox
+A pastebin supported files and text.

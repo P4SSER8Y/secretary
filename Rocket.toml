@@ -10,6 +10,7 @@ kindle = true
 weather = true
 bark = true
 let_server_run = true
+inbox = true
 
 [default.kindle]
 style = "<0,1,2>"

@@ -2,7 +2,7 @@ use anyhow::{Ok, Result};
 use once_cell::sync::Lazy;
 use serde::{de::DeserializeOwned, Serialize};
 
-fn get_db() -> sled::Db {
+pub fn get_db() -> sled::Db {
     static INSTANCE: Lazy<sled::Db> = Lazy::new(|| {
         let data = super::get_data_path();
         let path = std::path::Path::new(data).join("memory");
