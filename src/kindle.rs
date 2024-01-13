@@ -20,7 +20,8 @@ pub fn build(base: &'static str, build: Rocket<Build>, config: &Figment) -> Rock
             for item in list {
                 let name = item.0;
                 if let Some(path) = item.1.as_str() {
-                    font_map.insert(name.clone(), path.to_string());
+                    let path = std::path::Path::new(utils::get_data_path()).join(path);
+                    font_map.insert(name.clone(), path.to_str().unwrap().to_string());
                 }
             }
         }
