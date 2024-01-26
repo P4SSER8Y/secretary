@@ -14,6 +14,7 @@ mod kindle;
 mod let_server_run;
 mod logger;
 mod qweather;
+mod tsdb;
 
 pub const VERSION: &'static str = include_str!(concat!(env!("OUT_DIR"), "/version"));
 
@@ -95,6 +96,10 @@ async fn go(config: &Figment) -> Result<(), rocket::Error> {
     }
     if let Err(_) = db.set("launch", &Local::now().to_rfc3339()) {
         error!("last launch not found");
+    }
+
+    if is_enabled(&config, "tsdb", false) {
+        wtf = tsdb::build(wtf, &config).await;
     }
 
     if is_enabled(&config, "let_server_run", false) {

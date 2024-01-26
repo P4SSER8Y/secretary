@@ -22,3 +22,6 @@ Communicate via Wechat, powered by [LetServerRun](https://letserver.run/).
 
 ## inbox
 A pastebin supported files and text.
+
+## tsdb
+A wrapper for InfluxDB2.

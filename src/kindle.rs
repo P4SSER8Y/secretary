@@ -5,6 +5,7 @@ use rocket::response::status::NotFound;
 use rocket::{http::ContentType, Build, Rocket};
 use std::collections::HashMap;
 use std::io::Cursor;
+use std::vec;
 
 pub fn build(base: &'static str, build: Rocket<Build>, config: &Figment) -> Rocket<Build> {
     kindle::set_default_style(
@@ -30,6 +31,16 @@ pub fn build(base: &'static str, build: Rocket<Build>, config: &Figment) -> Rock
     build.mount(base, routes![main])
 }
 
+async fn save_battery(battery: usize) -> Result<(), anyhow::Error> {
+    use influxdb2::models::DataPoint;
+    tsdb::write(vec![DataPoint::builder("device")
+        .tag("name", "kindle")
+        .field("power", battery as f64)
+        .build()?])
+    .await?;
+    Ok(())
+}
+
 #[get("/?<battery>&<style>&<now>")]
 async fn main(
     battery: Option<usize>,
@@ -52,6 +63,7 @@ async fn main(
     let mut battery = battery;
     if let Some(battery) = battery {
         let db = utils::database::Db::new();
+        tokio::spawn(save_battery(battery));
         let _ = db.set("kindle/battery", &battery);
         if battery < 20 {
             bark::send(bark::Message {

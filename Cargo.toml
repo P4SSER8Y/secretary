@@ -18,6 +18,7 @@ kindle = { path = "crates/kindle" }
 qweather = { path = "crates/qweather" }
 let_server_run = { path = "crates/let_server_run" }
 inbox = { path = "crates/inbox" }
+tsdb = { path = "crates/tsdb" }
 chrono = "0.4.31"
 rocket = "0.5.0"
 anyhow = "1.0.78"
@@ -30,6 +31,7 @@ futures = "0.3.30"
 log = "0.4.20"
 env_logger = "0.10.1"
 clap = { version = "4.4.13", features = ["derive"] }
+influxdb2 = { version = "0.4.5", default-features = false, features = ["rustls"] }
 
 [build-dependencies]
 anyhow = "1.0.78"

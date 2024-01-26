@@ -4,6 +4,7 @@ local = "Local.toml" # override configuration
 level = "INFO"
 address = "0.0.0.0"
 port = 8000
+limits = { file = 67108864 }
 
 [default.switches]
 kindle = true
@@ -11,6 +12,7 @@ weather = true
 bark = true
 let_server_run = true
 inbox = true
+tsdb = true
 
 [default.kindle]
 style = "<0,1,2>"
@@ -32,3 +34,9 @@ token = ""
 
 [default.let_server_run.executors]
 echo = { t = "echo", c = "" }
+
+[default.tsdb]
+host = ""
+org = ""
+token = ""
+bucket = ""
