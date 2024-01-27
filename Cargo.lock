@@ -1662,7 +1662,6 @@ version = "0.24.1"
 dependencies = [
  "anyhow",
  "chrono",
- "cron",
  "figment",
  "log",
  "once_cell",
@@ -2119,6 +2118,7 @@ dependencies = [
  "bark",
  "chrono",
  "clap",
+ "cron",
  "env_logger",
  "futures",
  "image",

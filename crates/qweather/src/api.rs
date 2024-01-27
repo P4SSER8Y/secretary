@@ -1,5 +1,5 @@
-use anyhow::{anyhow, Result};
-use chrono::{DateTime, Local, NaiveTime};
+use anyhow::{anyhow, Context, Ok, Result};
+use chrono::{DateTime, FixedOffset, Local, NaiveTime};
 use log::info;
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
@@ -22,6 +22,8 @@ static CONFIG: Lazy<Mutex<Config>> = Lazy::new(|| {
 const API_URL_3D: &str = "https://devapi.qweather.com/v7/weather/3d";
 // cf. https://dev.qweather.com/docs/api/weather/weather-now/
 const API_URL_24H: &str = "https://devapi.qweather.com/v7/weather/24h";
+const API_URL_NOW: &str = "https://devapi.qweather.com/v7/weather/now";
+
 static DATA_24H: Lazy<Mutex<Vec<HourlyForecast>>> = Lazy::new(|| Mutex::new(Vec::new()));
 static DATA_3D: Lazy<Mutex<Vec<DailyForecast>>> = Lazy::new(|| Mutex::new(Vec::new()));
 
@@ -163,7 +165,9 @@ pub async fn update_24h() -> Result<()> {
     ];
     let url = reqwest::Url::parse_with_params(API_URL_24H, params).unwrap();
     info!("{}", url);
-    let query = reqwest::get(url).await.or(Err(anyhow!("cannot fetch {:#?}", API_URL_24H)))?;
+    let query = reqwest::get(url)
+        .await
+        .or(Err(anyhow!("cannot fetch {:#?}", API_URL_24H)))?;
     let bytes = query
         .bytes()
         .await
@@ -204,7 +208,9 @@ pub async fn update_3d() -> Result<()> {
         ("key", cfg.key.as_ref().unwrap()),
     ];
     let url = reqwest::Url::parse_with_params(API_URL_3D, params).unwrap();
-    let query = reqwest::get(url).await.or(Err(anyhow!("cannot fetch {:#?}", API_URL_24H)))?;
+    let query = reqwest::get(url)
+        .await
+        .or(Err(anyhow!("cannot fetch {:#?}", API_URL_3D)))?;
     let bytes = query
         .bytes()
         .await
@@ -226,7 +232,7 @@ pub async fn update_3d() -> Result<()> {
     let mut raw = DATA_3D.lock().await;
 
     let daily = json.get("daily").ok_or(anyhow!("daily not found"))?;
-    let daily_forecast_raw: Vec<DailyForecastRaw> = serde_json::from_value(daily.clone())?;
+    let daily_forecast_raw: Vec<DailyForecastRaw> = serde_json::from_value(daily.to_owned())?;
     *raw = daily_forecast_raw
         .iter()
         .map(|x| TryFrom::try_from(x))
@@ -234,4 +240,113 @@ pub async fn update_3d() -> Result<()> {
         .map(|x| x.unwrap())
         .collect::<Vec<DailyForecast>>();
     return Ok(());
+}
+
+#[allow(non_snake_case)]
+#[derive(Serialize, Deserialize, Debug)]
+struct CurrentWeatherRaw {
+    obsTime: String,
+    temp: Option<String>,
+    feelsLike: Option<String>,
+    text: Option<String>,
+    wind360: Option<String>,
+    windDir: Option<String>,
+    windScale: Option<String>,
+    windSpeed: Option<String>,
+    humidity: Option<String>,
+    precip: Option<String>,
+    pressure: Option<String>,
+    vis: Option<String>,
+    cloud: Option<String>,
+    dew: Option<String>,
+}
+
+#[derive(Debug)]
+pub struct CurrentWeather {
+    pub observe_time: DateTime<FixedOffset>,
+    pub temperature: Option<f64>,
+    pub feels_like: Option<f64>,
+    pub text: Option<String>,
+    pub wind360: Option<i64>,
+    pub wind_direction: Option<String>,
+    pub wind_scale: Option<f64>,
+    pub wind_speed: Option<f64>,
+    pub humidity: Option<f64>,
+    pub precip: Option<f64>,
+    pub pressure: Option<f64>,
+    pub visiblity: Option<f64>,
+    pub cloud: Option<f64>,
+    pub dew: Option<f64>,
+}
+
+impl std::convert::TryFrom<&CurrentWeatherRaw> for CurrentWeather {
+    type Error = anyhow::Error;
+    fn try_from(v: &CurrentWeatherRaw) -> Result<CurrentWeather> {
+        let observe_time = chrono::DateTime::parse_from_str(&v.obsTime, "%FT%R%:z")
+            .with_context(|| anyhow!("cannot decode datetime"))?;
+        let temperature = v.temp.as_ref().and_then(|x| x.parse().ok());
+        let feels_like = v.feelsLike.as_ref().and_then(|x| x.parse().ok());
+        let text = v.text.as_ref().and_then(|x| Some(x.clone()));
+        let wind360 = v.wind360.as_ref().and_then(|x| x.parse().ok());
+        let wind_direction = v.windDir.as_ref().and_then(|x| Some(x.clone()));
+        let wind_scale = v.windScale.as_ref().and_then(|x| x.parse().ok());
+        let wind_speed = v.windSpeed.as_ref().and_then(|x| x.parse().ok());
+        let humidity = v.humidity.as_ref().and_then(|x| x.parse().ok());
+        let precip = v.precip.as_ref().and_then(|x| x.parse().ok());
+        let pressure = v.pressure.as_ref().and_then(|x| x.parse().ok());
+        let visiblity = v.vis.as_ref().and_then(|x| x.parse().ok());
+        let cloud = v.cloud.as_ref().and_then(|x| x.parse().ok());
+        let dew = v.dew.as_ref().and_then(|x| x.parse().ok());
+        Ok(CurrentWeather {
+            observe_time,
+            temperature,
+            feels_like,
+            text,
+            wind360,
+            wind_direction,
+            wind_scale,
+            wind_speed,
+            humidity,
+            precip,
+            pressure,
+            visiblity,
+            cloud,
+            dew,
+        })
+    }
+}
+
+pub async fn get_now() -> Result<CurrentWeather> {
+    info!("fetch current weather");
+    let cfg = CONFIG.lock().await;
+    let params = &[
+        ("location", cfg.location.as_ref().unwrap()),
+        ("key", cfg.key.as_ref().unwrap()),
+    ];
+    let url = reqwest::Url::parse_with_params(API_URL_NOW, params).unwrap();
+    let query = reqwest::get(url)
+        .await
+        .or(Err(anyhow!("cannot fetch {:#?}", API_URL_NOW)))?;
+    let bytes = query
+        .bytes()
+        .await
+        .or(Err(anyhow!("failed to turn content into bytes")))?
+        .to_vec();
+    let json = serde_json::from_slice::<serde_json::Value>(&bytes)
+        .or(Err(anyhow!("failed to parse into json")))?;
+    if !json.is_object() {
+        return Err(anyhow!("json is not an valid object"));
+    }
+    let code = json
+        .get("code")
+        .ok_or(anyhow!("code not found"))?
+        .as_str()
+        .ok_or(anyhow!("code is not a string"))?;
+    if code != "200" {
+        return Err(anyhow!("query failed"));
+    }
+
+    let now = json.get("now").ok_or(anyhow!("now not found"))?;
+    let raw: CurrentWeatherRaw = serde_json::from_value(now.to_owned())?;
+    CurrentWeather::try_from(&raw)
 }
