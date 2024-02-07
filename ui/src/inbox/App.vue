@@ -28,7 +28,7 @@ async function reload() {
         selected_font_color="black"> </p5-title>
     </div>
     <div class="flex-none gap-2">
-      <input v-model="prefix" type="number" placeholder="code" class="input w-24 md:w-auto" />
+      <input v-model="prefix" type="tel" placeholder="code" class="input w-24 md:w-auto" />
     </div>
   </div>
   <ItemList :data="filteredData"></ItemList>
