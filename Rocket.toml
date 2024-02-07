@@ -5,6 +5,7 @@ level = "INFO"
 address = "0.0.0.0"
 port = 8000
 limits = { file = 67108864 }
+ui_path = "ui"
 
 [default.switches]
 kindle = true
