@@ -2,3 +2,4 @@
 *.otf
 /Local.toml
 /data
+/dist
