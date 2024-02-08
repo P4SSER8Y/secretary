@@ -26,7 +26,6 @@ export default defineConfig({
       '^/inbox/api': {
         target: 'http://192.168.31.41:8000',
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/inbox\/api/, "/inbox"),
       }
     }
   }
