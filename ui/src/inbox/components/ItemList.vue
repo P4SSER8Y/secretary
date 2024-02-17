@@ -3,6 +3,9 @@ import { getCurrentInstance } from 'vue';
 import { Metadata } from '../lib/structs';
 // @ts-ignore: 7016
 import { P5Message } from 'p5-ui';
+import dayjs from 'dayjs';
+import relativeTime from 'dayjs/plugin/relativeTime';
+dayjs.extend(relativeTime);
 
 const api = getCurrentInstance()?.appContext.config.globalProperties.$api;
 const props = defineProps<{
@@ -39,13 +42,16 @@ async function drop(id: string) {
                         font_color="#FFF"
                     ></p5-title>
                 </a>
-                <div class="text-base-content text-nowrap text-md text-clip overflow-hidden ...">{{ item.name }}</div>
+                <!-- <div class="text-base-content text-nowrap text-md text-clip overflow-hidden ...">{{ item.name }}</div> -->
+                <p5-title :content="item.name" font_color="#FFF"></p5-title>
             </div>
             <div class="collapse-content bg-base-300 flex gap-5">
-                <div>{{ item.expiration }}</div>
                 <button @click="drop(item.id)" class="min-w-20">
                     <p5-title content="DROP" :animation="true" font_color="#FFF" selected_bg_color="#ff0022"> </p5-title>
                 </button>
+                <div class="tooltip tooltip-warning" :data-tip="dayjs(item.expiration).format('YYYY-MM-DD dd HH:mm:ss')">
+                    <p5-title :content="dayjs(item.expiration).fromNow(true)" font_color="cyan"></p5-title>
+                </div>
             </div>
         </div>
     </div>
