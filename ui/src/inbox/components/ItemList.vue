@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { getCurrentInstance } from 'vue';
-import { Metadata } from '../lib/structs';
+import { Metadata, get_link } from '../lib/structs';
 // @ts-ignore: 7016
 import { P5Message } from 'p5-ui';
 import dayjs from 'dayjs';
@@ -12,10 +12,6 @@ const props = defineProps<{
     data: Metadata[];
 }>();
 const emit = defineEmits<{ update: [] }>();
-
-function get_link(item: Metadata) {
-    return 'api/get/' + item.id;
-}
 
 async function drop(id: string) {
     if (!api) {

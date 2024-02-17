@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { Ref, computed, onMounted, ref } from 'vue';
 import ItemList from './components/ItemList.vue';
-import { Metadata } from './lib/structs';
+import { Metadata, get_link } from './lib/structs';
 import { getCurrentInstance } from 'vue';
+// @ts-ignore: 7016
+import { P5Message } from 'p5-ui';
 
 const api = getCurrentInstance()?.appContext.config.globalProperties.$api;
 const prefix = ref('');
@@ -19,6 +21,15 @@ async function reload() {
     let raw = await api?.get('list');
     data.value = raw?.data;
 }
+
+async function enter_code() {
+    if (filteredData.value.length == 1) {
+        let link = get_link(filteredData.value[0]);
+        window.location.href = link;
+    } else {
+        P5Message({ type: 'fail' });
+    }
+}
 </script>
 
 <template>
@@ -29,10 +40,16 @@ async function reload() {
             </p5-title>
         </div>
         <div class="flex-none gap-2">
-            <input v-model="prefix" type="tel" placeholder="code" class="input w-24 md:w-auto" />
+            <input v-model="prefix" type="tel" placeholder="code" class="input w-24 md:w-auto" @keyup.enter="enter_code" />
         </div>
     </div>
-    <ItemList :data="filteredData" @update="reload"></ItemList>
+    <ItemList v-if="filteredData.length > 0" :data="filteredData" @update="reload"></ItemList>
+    <div v-else class="hero">
+        <div class="hero-content text-center">
+            <p5-icon type="party" name="hifumi" />
+            <p5-title content="TAKE YOUR HEART" size="extra-large"></p5-title>
+        </div>
+    </div>
 </template>
 
 <style scoped lang="postcss"></style>
