@@ -1,13 +1,11 @@
 <script setup lang="ts">
-import { getCurrentInstance } from 'vue';
 import { Metadata, get_link } from '../lib/structs';
-// @ts-ignore: 7016
-import { P5Message } from 'p5-ui';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
+import { get_api, p5_message } from '../lib/utils';
 dayjs.extend(relativeTime);
 
-const api = getCurrentInstance()?.appContext.config.globalProperties.$api;
+const api = get_api();
 const props = defineProps<{
     data: Metadata[];
 }>();
@@ -15,11 +13,11 @@ const emit = defineEmits<{ update: [] }>();
 
 async function drop(id: string) {
     if (!api) {
-        P5Message({ type: 'fail' });
+        p5_message('failed');
         return;
     }
     await api.get('drop/' + id);
-    P5Message({ type: 'clear' });
+    p5_message('clear');
     emit('update');
 }
 </script>

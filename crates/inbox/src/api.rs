@@ -20,4 +20,6 @@ pub fn init_path(path: &str) {
 #[derive(FromForm)]
 pub struct NewData<'r> {
     pub file: TempFile<'r>,
+    pub public: Option<bool>,
+    pub expire: Option<String>,
 }

@@ -7,6 +7,6 @@ export type Metadata = {
     public: boolean,
 }
 
-export function get_link(item: Metadata) {
+export function get_link(item: { id: string }) {
     return 'api/get/' + item.id;
 }

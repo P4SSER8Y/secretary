@@ -19,18 +19,16 @@ pub async fn build(
 }
 
 #[post(
-    "/new?<public>&<expire>",
+    "/new",
     data = "<data>",
     format = "multipart/form-data",
     rank = 1
 )]
 async fn new_file(
     data: Form<NewData<'_>>,
-    public: Option<bool>,
-    expire: Option<String>,
 ) -> Result<Json<Status>, Json<Status>> {
-    let public = public.unwrap_or(true);
-    let expire = expire.unwrap_or_else(|| "7d".to_string());
+    let public = data.public.unwrap_or(true);
+    let expire = data.expire.clone().unwrap_or_else(|| "7d".to_string());
     let db = utils::database::get_db();
     let (key, id) = loop {
         let id = rand::random::<u32>() % 10_000;
