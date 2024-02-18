@@ -1,4 +1,4 @@
-#!/usr/bin/env sh
+#!/usr/bin/env bash
 
 set -e
 source $(dirname $0)/utils.sh
@@ -16,6 +16,7 @@ echo build target: $target
 cd $base
 cargo build --target $target --release --target-dir $base/target
 
+mkdir -p $base/dist
 cp $base/Rocket.toml $base/dist/Rocket.toml
 cp $base/target/$target/release/secretary $base/dist/secretary
 

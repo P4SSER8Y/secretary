@@ -7,17 +7,20 @@ function get_target() {
         select target in "${items[@]}"
         do
             if [ -z "$target" ]; then
-                echo "unknown target"
-                return 1
+                return 0
             fi
             break
         done
     else
-        if [ $1 -lt 1 -o $1 -gt ${#items[*]} ]; then
-            echo "index=$1 not valid"
-            return 1
+        if [[ $1 =~ ^[0-9]+$ ]]; then
+            if [ $1 -lt 1 -o $1 -gt ${#items[*]} ]; then
+                return 0
+            else
+                target=${items[$1-1]}
+            fi
+        else
+            target=$1
         fi
-        target=${items[$1-1]}
     fi
     echo $target
     return 0
