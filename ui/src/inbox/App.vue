@@ -32,6 +32,9 @@ function enter_code() {
 }
 
 function get_file(data: { id: string }) {
+    if (data.id.length <= 2) {
+        return;
+    }
     let link = get_link(data);
     window.location.href = link;
 }
@@ -75,13 +78,8 @@ function uploaded(id: string) {
         <p5-divider v-if="currentId.length > 0"></p5-divider>
         <ItemList v-if="filteredData.length > 0" :data="filteredData" @update="reload"></ItemList>
         <div v-else class="hero">
-            <div class="hero-content text-center">
-                <p5-title
-                    content="TAKE YOUR HEART"
-                    size="extra-large"
-                    :animation="prefix.length > 0"
-                    @click="get_file({ id: prefix })"
-                ></p5-title>
+            <div :class="['hero-content', 'text-center', prefix.length > 2 ? 'p5-hover-animation-mix' : '']">
+                <img src="./assets/p5_takeyourheart.png" @click="get_file({ id: prefix })" />
             </div>
         </div>
     </div>
