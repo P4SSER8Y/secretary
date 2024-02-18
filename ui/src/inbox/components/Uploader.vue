@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue';
-import { get_api, p5_message, p5_notify } from '../lib/utils';
+import { get_api, p5_message } from '../lib/utils';
 
 const api = get_api();
 const emit = defineEmits<{ (e: 'close'): void; (e: 'uploaded', id: string): void }>();
