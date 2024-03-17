@@ -12,6 +12,7 @@ export default defineConfig({
     rollupOptions: {
       input: {
         inbox: resolve(__dirname, 'inbox/index.html'),
+        kindle: resolve(__dirname, 'kindle/debug/index.html'),
       }
     }
   },
