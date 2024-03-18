@@ -51,7 +51,7 @@ pub async fn generate(context: &Context) -> Result<GrayImage> {
 
     let font_scale = Scale::uniform(375.0);
     let color = Luma([0]);
-    let (base_x, base_y) = (40, 320);
+    let (base_x, base_y) = (30, 380);
     let (ch0, ch1) = if now.day() % 10 == 0 {
         (
             MAP.get(&((now.day() / 10) as u8)).unwrap(),
@@ -65,23 +65,21 @@ pub async fn generate(context: &Context) -> Result<GrayImage> {
             MAP.get(&((now.day() % 10) as u8)).unwrap(),
         )
     };
-    draw_aligned_text(
+    draw_centered_text(
         &mut img,
         color,
-        (base_x, base_y - 150),
+        (base_x + 150, base_y - 150),
         font_scale,
         font,
         ch0,
-        (AlignHorizontal::Left, AlignVertical::Center),
     );
-    draw_aligned_text(
+    draw_centered_text(
         &mut img,
         color,
-        (base_x, base_y + 150),
+        (base_x + 150, base_y + 150),
         font_scale,
         font,
         ch1,
-        (AlignHorizontal::Left, AlignVertical::Center),
     );
     draw_aligned_text(
         &mut img,

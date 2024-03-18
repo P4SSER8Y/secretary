@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use image::{GrayImage, Luma};
+use image::{GenericImageView, GrayAlphaImage, GrayImage, Luma, LumaA};
 use imageproc::{drawing, rect::Rect};
 use log::info;
 use once_cell::sync::OnceCell;
@@ -18,6 +18,72 @@ pub enum AlignVertical {
     Top,
     Center,
     Bottom,
+}
+
+pub fn draw_centered_text<'a>(
+    canvas: &'a mut GrayImage,
+    color: Luma<u8>,
+    base: (i32, i32),
+    scale: Scale,
+    font: &'a Font<'a>,
+    text: &'a str,
+) -> Rect {
+    let size = drawing::text_size(scale, font, &text);
+    let temp = drawing::draw_text(
+        &GrayAlphaImage::new(size.0 as u32, size.1 as u32),
+        LumaA([color.0[0], 255]),
+        0,
+        0,
+        scale,
+        font,
+        &text,
+    );
+    let temp = {
+        let mut min_x = size.0 as u32;
+        let mut max_x = 0 as u32;
+        let mut min_y = size.1 as u32;
+        let mut max_y = 0 as u32;
+        for x in 0..(size.0 as u32) {
+            for y in 0..(size.1 as u32) {
+                if temp.get_pixel(x, y).0[1] as u32 > 0 {
+                    if x < min_x {
+                        min_x = x
+                    };
+                    if x > max_x {
+                        max_x = x
+                    };
+                    if y < min_y {
+                        min_y = y
+                    };
+                    if y > max_y {
+                        max_y = y
+                    };
+                }
+            }
+        }
+        image::imageops::crop_imm(&temp, min_x, min_y, max_x - min_x, max_y - min_y)
+    };
+
+    let size = (temp.width() as i32, temp.height() as i32);
+    let x = base.0 - size.0 / 2;
+    let y = base.1 - size.1 / 2;
+    for w in 0..size.0 {
+        for h in 0..size.1 {
+            if (w + x < 0)
+                || (h + y < 0)
+                || (w + x >= canvas.width() as i32)
+                || (h + y >= canvas.height() as i32)
+            {
+                continue;
+            }
+            let a = canvas.get_pixel((w + x) as u32, (h + y) as u32);
+            let b = temp.get_pixel(w as u32, h as u32);
+            let r = b.0[1] as f32 / 255.0;
+            let p = Luma([((a.0[0] as f32) * (1.0 - r) + (b.0[0] as f32) * r) as u8]);
+            canvas.put_pixel((w + x) as u32, (h + y) as u32, p);
+        }
+    }
+    Rect::at(x, y).of_size(size.0.try_into().unwrap(), size.1.try_into().unwrap())
 }
 
 pub fn draw_aligned_text<'a>(

@@ -194,7 +194,7 @@ dependencies = [
 
 [[package]]
 name = "bark"
-version = "0.25.1"
+version = "0.25.2"
 dependencies = [
  "figment",
  "log",
@@ -1023,7 +1023,7 @@ dependencies = [
 
 [[package]]
 name = "inbox"
-version = "0.25.1"
+version = "0.25.2"
 dependencies = [
  "anyhow",
  "humantime",
@@ -1166,7 +1166,7 @@ dependencies = [
 
 [[package]]
 name = "kindle"
-version = "0.25.1"
+version = "0.25.2"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1194,7 +1194,7 @@ checksum = "03087c2bad5e1034e8cace5926dec053fb3790248370865f5117a7d0213354c8"
 
 [[package]]
 name = "let_server_run"
-version = "0.25.1"
+version = "0.25.2"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1657,7 +1657,7 @@ dependencies = [
 
 [[package]]
 name = "qweather"
-version = "0.25.1"
+version = "0.25.2"
 dependencies = [
  "anyhow",
  "chrono",
@@ -2113,7 +2113,7 @@ dependencies = [
 
 [[package]]
 name = "secretary"
-version = "0.25.1"
+version = "0.25.2"
 dependencies = [
  "anyhow",
  "bark",
@@ -2652,7 +2652,7 @@ checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
 
 [[package]]
 name = "tsdb"
-version = "0.25.1"
+version = "0.25.2"
 dependencies = [
  "anyhow",
  "figment",
@@ -2746,7 +2746,7 @@ checksum = "711b9620af191e0cdc7468a8d14e709c3dcdb115b36f838e601583af800a370a"
 
 [[package]]
 name = "utils"
-version = "0.25.1"
+version = "0.25.2"
 dependencies = [
  "anyhow",
  "bincode",
