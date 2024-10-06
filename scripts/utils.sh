@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 
 function get_target() {
-    items=("aarch64-unknown-linux-musl" "x86_64-unknown-linux-gnu")
+    items=("aarch64-unknown-linux-musl" "x86_64-unknown-linux-gnu" "stable-aarch64-apple-darwin")
     if [ -z "$1" ]; then
         PS="select target"
         select target in "${items[@]}"
