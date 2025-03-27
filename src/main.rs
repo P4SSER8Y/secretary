@@ -111,6 +111,9 @@ async fn go(config: &Figment) -> Result<(), rocket::Error> {
     if is_enabled(&config, "kindle", false) {
         wtf = kindle::build("/kindle", wtf, &config);
     }
+    if is_enabled(&config, "meme", false) {
+        wtf = meme::build("/meme", wtf, &config).await.unwrap();
+    }
     if is_enabled(&config, "inbox", false) {
         wtf = inbox::build("/inbox/api", wtf, &config).await.unwrap();
     }
@@ -133,6 +136,7 @@ async fn go(config: &Figment) -> Result<(), rocket::Error> {
     Ok(())
 }
 
+/// 42
 #[rocket::main]
 async fn main() -> Result<(), rocket::Error> {
     let mut config = Figment::new()

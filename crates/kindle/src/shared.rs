@@ -125,7 +125,7 @@ pub fn load_fonts(fonts: HashMap<String, String>) {
             info!("loading {}: {}", name, path);
             let data = std::fs::read(&path).expect(&format!("failed to load {}", path));
             let font = Font::try_from_vec(data).unwrap_or_else(|| {
-                panic!("cannot load {}", path);
+                panic!("cannot load the font for {}, path={}", name, path);
             });
             map.insert(name.to_string(), font);
         }

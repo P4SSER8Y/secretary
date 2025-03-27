@@ -1,5 +1,6 @@
 use anyhow::{anyhow, Result};
 
+///! 生成版本号字符串
 fn get_version_string() -> Result<String> {
     let profile = std::env::var("PROFILE")?.to_lowercase();
     if profile != "release" {

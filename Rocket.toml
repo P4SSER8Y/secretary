@@ -41,3 +41,11 @@ host = ""
 org = ""
 token = ""
 bucket = ""
+
+[default.meme]
+endpoint = ""
+region = ""
+bucket = ""
+access_key = ""
+secret_key = ""
+jwt_secret_key = ""
