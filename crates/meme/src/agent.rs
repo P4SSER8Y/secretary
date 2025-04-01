@@ -1,5 +1,5 @@
 use anyhow::{anyhow, Result};
-use base64::Engine;
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use jsonwebtoken::{decode, DecodingKey, Validation};
 use log::{debug, info};
 use rocket::serde::Deserialize;
@@ -63,7 +63,7 @@ pub async fn init(
     };
 
     // base64 解码出 pem key
-    let key = base64::engine::general_purpose::STANDARD.decode(jwt_secret_key)?;
+    let key = BASE64.decode(jwt_secret_key)?;
     let key = DecodingKey::from_ec_pem(&key)?;
     JWT_SECRET_KEY.get_or_init(|| key);
     JWT_VALIDATION.get_or_init(|| Validation::new(jsonwebtoken::Algorithm::ES256));
