@@ -1,26 +1,42 @@
 mod agent;
 
 use crate::agent::init;
+use agent::TokenPayload;
 use anyhow::anyhow;
-use log::{self, debug, info, warn};
+use figment::Figment;
+use log::{debug, info};
 use rocket::{
-    figment::Figment, form::Form, http::ContentType, post, response::status::NotFound, routes,
-    Build, FromForm, Rocket,
+    get, http::Status, request::{FromRequest, Outcome}, response::status::NotFound, routes, Build, Request, Rocket
 };
 
-#[derive(Debug, FromForm)]
-struct JWT {
-    bearer: String,
+#[rocket::async_trait]
+impl<'a> FromRequest<'a> for TokenPayload {
+    type Error = anyhow::Error;
+    async fn from_request(request: &'a Request<'_>) -> Outcome<Self, Self::Error> {
+        let bearer = request
+            .headers()
+            .get_one("Authorization")
+            .ok_or(anyhow!("No bearer token"));
+        if let Err(_) = bearer {
+            return Outcome::Forward(Status::Unauthorized);
+        }
+        let bearer = bearer.unwrap();
+        let bearer = bearer.replace("Bearer ", "");
+        match agent::check(bearer.trim()) {
+            Ok(claims) => Outcome::Success(claims),
+            Err(_e) => Outcome::Forward(Status::Unauthorized),
+        }
+    }
 }
 
-#[post("/check", data = "<data>")]
-async fn check(data: Form<JWT>) -> Result<String, NotFound<()>> {
-    if let Ok(claims) = agent::check(&data.bearer) {
-        debug!("{:?}", claims);
-        return Ok(format!("{:?}", claims));
-    }
-    warn!("Invalid token: {}", data.bearer);
-    Err(NotFound(()))
+#[get("/check")]
+async fn check(data: TokenPayload) -> Result<String, NotFound<()>> {
+    Ok(format!("Hello {} of {}", data.name, data.family))
+}
+
+#[get("/check", rank=1)]
+async fn check_failed() -> (Status, &'static str) {
+    (Status::Unauthorized, "WTF")
 }
 
 pub async fn build(
@@ -70,5 +86,5 @@ pub async fn build(
         &jwt_secret_key,
     )
     .await?;
-    Ok(build.mount(base, routes![check]))
+    Ok(build.mount(base, routes![check, check_failed]))
 }

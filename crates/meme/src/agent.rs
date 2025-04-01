@@ -1,11 +1,11 @@
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use jsonwebtoken::{decode, DecodingKey, Validation};
 use log::{debug, info};
 use rocket::serde::Deserialize;
 use s3::Bucket;
 use serde::Serialize;
-use std::{collections::BTreeMap, sync::OnceLock};
+use std::sync::OnceLock;
 
 #[derive(Deserialize, Debug)]
 struct MetaData {
@@ -23,9 +23,9 @@ struct MetaData {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TokenPayload {
     #[serde(alias = "n")]
-    name: String,
+    pub name: String,
     #[serde(alias = "f")]
-    family: String,
+    pub family: String,
 }
 
 static BUCKET: OnceLock<Box<s3::Bucket>> = OnceLock::new();
@@ -35,8 +35,8 @@ static JWT_VALIDATION: OnceLock<Validation> = OnceLock::new();
 
 pub fn check(token: &str) -> Result<TokenPayload> {
     // check if bearer is valid JWT token with AES256 algorithm
-    let key = JWT_SECRET_KEY.get().unwrap();
-    let validation = JWT_VALIDATION.get().unwrap();
+    let key = JWT_SECRET_KEY.get().with_context(|| anyhow!("JWT_SECRET_KEY not set"))?;
+    let validation = JWT_VALIDATION.get().with_context(|| anyhow!("JWT_VALIDATION not set"))?;
     let claims = decode::<TokenPayload>(token, key, validation)?.claims;
     Ok(claims)
 }
@@ -72,7 +72,7 @@ pub async fn init(
     info!("list keys");
     let list = bucket.list("meta/ooxx".to_owned(), None).await?;
 
-    let key = &list[0].contents[100].key;
+    let key = &list[0].contents[500].key;
     info!("get object");
     let data = bucket.get_object(key).await?;
     info!("{} {:#?}", key, data.bytes());
