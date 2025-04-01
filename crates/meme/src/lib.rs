@@ -1,12 +1,12 @@
 mod agent;
 
 use crate::agent::init;
-use agent::TokenPayload;
+use agent::{MetaData, TokenPayload};
 use anyhow::anyhow;
 use figment::Figment;
 use log::{debug, info};
 use rocket::{
-    get, http::Status, request::{FromRequest, Outcome}, response::status::NotFound, routes, Build, Request, Rocket
+    get, http::Status, request::{FromRequest, Outcome}, response::status::NotFound, routes, serde::json::Json, Build, Request, Rocket
 };
 
 #[rocket::async_trait]
@@ -37,6 +37,12 @@ async fn check(data: TokenPayload) -> Result<String, NotFound<()>> {
 #[get("/check", rank=1)]
 async fn check_failed() -> (Status, &'static str) {
     (Status::Unauthorized, "WTF")
+}
+
+#[get("/list")]
+async fn list(data: TokenPayload) -> Json<Vec<MetaData>> {
+    let list = agent::list(&data.name).await;
+    Json(list.unwrap_or(Vec::new()))
 }
 
 pub async fn build(
@@ -86,5 +92,5 @@ pub async fn build(
         &jwt_secret_key,
     )
     .await?;
-    Ok(build.mount(base, routes![check, check_failed]))
+    Ok(build.mount(base, routes![check, check_failed, list]))
 }
