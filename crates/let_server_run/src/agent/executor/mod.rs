@@ -8,7 +8,7 @@ mod shell;
 #[derive(Deserialize, Debug)]
 #[serde(tag = "t", content = "c", rename_all = "lowercase")]
 pub enum ExecutorType {
-    Echo(String),
+    Echo(()),
     Shell(String),
 }
 

@@ -1,11 +1,11 @@
 use anyhow::{anyhow, Context, Result};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use jsonwebtoken::{decode, DecodingKey, Validation};
-use log::{debug, info};
+use log::info;
 use rocket::{serde::Deserialize, tokio::sync::RwLock};
 use s3::Bucket;
 use serde::Serialize;
-use std::{collections::HashMap, result, sync::OnceLock};
+use std::{collections::HashMap, sync::OnceLock};
 
 #[derive(Deserialize, Debug, Serialize, Clone)]
 #[serde(crate = "rocket::serde")]
@@ -27,9 +27,12 @@ pub struct TokenPayload {
     pub name: String,
     #[serde(alias = "f")]
     pub family: String,
+    #[serde(default)]
+    pub raw: String,
 }
 
 static BUCKET: OnceLock<Box<s3::Bucket>> = OnceLock::new();
+static BUFFERS: OnceLock<RwLock<HashMap<String, Vec<MetaData>>>> = OnceLock::new();
 static JWT_SECRET_KEY: OnceLock<DecodingKey> = OnceLock::new();
 static JWT_VALIDATION: OnceLock<Validation> = OnceLock::new();
 
@@ -41,13 +44,19 @@ pub fn check(token: &str) -> Result<TokenPayload> {
     let validation = JWT_VALIDATION
         .get()
         .with_context(|| anyhow!("JWT_VALIDATION not set"))?;
-    let claims = decode::<TokenPayload>(token, key, validation)?.claims;
+    let mut claims = decode::<TokenPayload>(token, key, validation)?.claims;
+    claims.raw = token.to_string();
     Ok(claims)
 }
 
+pub async fn get_content(path: &str) -> Result<Vec<u8>> {
+    let bucket = BUCKET.get().with_context(|| anyhow!("BUCKET not set"))?;
+    let data = bucket.get_object(path).await?;
+    Ok(data.to_vec())
+}
+
 pub async fn list(name: &str) -> Result<Vec<MetaData>> {
-    static BUFFERS: OnceLock<RwLock<HashMap<String, Vec<MetaData>>>> = OnceLock::new();
-    let buffer = BUFFERS.get_or_init(|| RwLock::new(HashMap::new())).read().await;
+    let buffer = BUFFERS.get().with_context(|| anyhow!("BUFFERS not set"))?.read().await;
     if !buffer.contains_key(name) {
         drop(buffer);
         info!("update buffer for {}", name);
@@ -100,6 +109,7 @@ pub async fn init(
 
     let bucket = Bucket::new(bucket, region, credentials)?.with_path_style();
     BUCKET.get_or_init(|| bucket);
+    BUFFERS.get_or_init(|| RwLock::new(HashMap::new()));
 
     return Ok(());
 }
