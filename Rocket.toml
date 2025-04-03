@@ -6,6 +6,7 @@ address = "0.0.0.0"
 port = 8000
 limits = { file = 67108864 }
 ui_path = "ui"
+host = ""
 
 [default.switches]
 kindle = true
@@ -49,3 +50,4 @@ bucket = ""
 access_key = ""
 secret_key = ""
 jwt_secret_key = ""
+jwt_gate = ""

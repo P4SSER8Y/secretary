@@ -10,16 +10,19 @@ use log::info;
 use rand::{self, Rng};
 use rocket::{
     get,
-    http::{CookieJar, Status},
+    http::{ContentType, CookieJar, Status},
     request::{FromRequest, Outcome},
-    response::{self, status::NotFound, Responder},
+    response::{self, status::NotFound, Redirect, Responder},
     routes,
     serde::json::Json,
-    Build, Request, Response, Rocket,
+    tokio, Build, Request, Response, Rocket,
 };
 
 static ENDPOINT: OnceLock<String> = OnceLock::new();
 static BUCKET: OnceLock<String> = OnceLock::new();
+static HOST: OnceLock<String> = OnceLock::new();
+static GATE: OnceLock<String> = OnceLock::new();
+static BASE: OnceLock<String> = OnceLock::new();
 
 #[rocket::async_trait]
 impl<'a> FromRequest<'a> for TokenPayload {
@@ -68,10 +71,58 @@ impl<'a> FromRequest<'a> for TokenPayload {
     }
 }
 
+#[get("/check?<token>")]
+async fn check_with_token(
+    token: &str,
+    _data: TokenPayload,
+    cookies: &CookieJar<'_>,
+) -> (ContentType, String) {
+    cookies.add(("token", token.to_string()));
+    (
+        ContentType::HTML,
+        format!(
+            r#"<html><head><meta http-equiv="refresh" content="0;url={}"></head><body></body></html>"#,
+            BASE.get().unwrap().clone() + "check",
+        ),
+    )
+}
+
 #[get("/check")]
-async fn check(data: TokenPayload, cookies: &CookieJar<'_>) -> Result<String, NotFound<()>> {
-    cookies.add(("token", data.raw.clone()));
+async fn check(data: TokenPayload) -> Result<String, NotFound<()>> {
+    let name = data.name.clone();
+    tokio::spawn(async move {
+        let _ = agent::update(&name).await;
+    });
     Ok(format!("Hello {} of {}", data.name, data.family))
+}
+
+#[get("/login")]
+async fn login() -> Redirect {
+    let host = HOST.get();
+    let host = if let Some(host) = host {
+        host
+    } else {
+        "http://localhost"
+    };
+
+    let callback = url::Url::parse(host).unwrap();
+    let callback = callback.join(BASE.get().unwrap()).unwrap();
+    let callback = callback.join("check").unwrap();
+
+    let gate = url::Url::parse_with_params(
+        GATE.get().unwrap(),
+        &[("c", callback.as_str()), ("f", "meme"), ("t", "1")],
+    )
+    .unwrap();
+
+    info!("{:}", gate);
+    Redirect::to(gate.to_string())
+}
+
+#[get("/logout")]
+async fn logout(cookies: &CookieJar<'_>) -> &'static str {
+    cookies.remove("token");
+    "Bye"
 }
 
 #[get("/<_..>", rank = 99)]
@@ -139,6 +190,19 @@ pub async fn build(
     build: Rocket<Build>,
     config: &Figment,
 ) -> Result<Rocket<Build>, anyhow::Error> {
+    let host = config
+        .find_value("host")?
+        .as_str()
+        .ok_or(anyhow!("host not found"))?
+        .to_owned();
+    HOST.get_or_init(move || host);
+    let gate = config
+        .find_value("meme.jwt_gate")?
+        .as_str()
+        .ok_or(anyhow!("meme.jwt_gate not found"))?
+        .to_owned();
+    GATE.get_or_init(move || gate);
+    BASE.get_or_init(|| base.to_string());
     let endpoint = config
         .find_value("meme.endpoint")?
         .as_str()
@@ -183,5 +247,16 @@ pub async fn build(
         &jwt_secret_key,
     )
     .await?;
-    Ok(build.mount(base, routes![check, everything, list, random]))
+    Ok(build.mount(
+        base,
+        routes![
+            check,
+            check_with_token,
+            everything,
+            list,
+            random,
+            login,
+            logout
+        ],
+    ))
 }

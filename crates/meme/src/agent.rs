@@ -2,10 +2,19 @@ use anyhow::{anyhow, Context, Result};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use jsonwebtoken::{decode, DecodingKey, Validation};
 use log::info;
-use rocket::{serde::Deserialize, tokio::sync::RwLock};
+use rocket::{
+    serde::Deserialize,
+    tokio::{
+        self,
+        sync::{Mutex, RwLock},
+    },
+};
 use s3::Bucket;
 use serde::Serialize;
-use std::{collections::HashMap, sync::OnceLock};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::OnceLock,
+};
 
 #[derive(Deserialize, Debug, Serialize, Clone)]
 #[serde(crate = "rocket::serde")]
@@ -55,10 +64,8 @@ pub async fn get_content(path: &str) -> Result<Vec<u8>> {
     Ok(data.to_vec())
 }
 
-pub async fn list(name: &str) -> Result<Vec<MetaData>> {
-    let buffer = BUFFERS.get().with_context(|| anyhow!("BUFFERS not set"))?.read().await;
-    if !buffer.contains_key(name) {
-        drop(buffer);
+pub async fn update(name: &str) -> Result<()> {
+    async fn main(name: &str) -> Result<()> {
         info!("update buffer for {}", name);
         let bucket = BUCKET.get().with_context(|| anyhow!("BUCKET not set"))?;
         let list = bucket.list(format!("meta/{}", name), None).await?;
@@ -70,10 +77,65 @@ pub async fn list(name: &str) -> Result<Vec<MetaData>> {
                 result.push(meta);
             }
         }
-        let mut buffer = BUFFERS.get_or_init(|| RwLock::new(HashMap::new())).write().await;
-        buffer.insert(name.to_owned(), result);
+        if result.len() > 0 {
+            let mut buffer = BUFFERS
+                .get_or_init(|| RwLock::new(HashMap::new()))
+                .write()
+                .await;
+            buffer.insert(name.to_owned(), result);
+            info!("finish update buffer for {}", name);
+            Ok(())
+        } else {
+            Err(anyhow!("no such name: {}", name))
+        }
     }
-    let buffer = BUFFERS.get_or_init(|| RwLock::new(HashMap::new())).read().await;
+    static LOCK: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+    let mut updating = false;
+    {
+        let set = LOCK.get_or_init(|| Mutex::new(HashSet::new())).lock().await;
+        if set.contains(name) {
+            updating = true;
+        }
+    }
+    if updating {
+        info!("updating buffer for {}", name);
+        loop {
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            {
+                let set = LOCK.get_or_init(|| Mutex::new(HashSet::new())).lock().await;
+                if !set.contains(name) {
+                    info!("updated buffer for {}", name);
+                    return Ok(());
+                }
+            }
+        }
+    }
+    {
+        let mut set = LOCK.get_or_init(|| Mutex::new(HashSet::new())).lock().await;
+        set.insert(name.to_string());
+    }
+    let t = main(name).await;
+    {
+        let mut set = LOCK.get_or_init(|| Mutex::new(HashSet::new())).lock().await;
+        set.remove(name);
+    }
+    t
+}
+
+pub async fn list(name: &str) -> Result<Vec<MetaData>> {
+    let buffer = BUFFERS
+        .get()
+        .with_context(|| anyhow!("BUFFERS not set"))?
+        .read()
+        .await;
+    if !buffer.contains_key(name) {
+        drop(buffer);
+        update(name).await?;
+    }
+    let buffer = BUFFERS
+        .get_or_init(|| RwLock::new(HashMap::new()))
+        .read()
+        .await;
     match buffer.get(name) {
         Some(result) => Ok(result.clone()),
         None => Err(anyhow!("no such name")),

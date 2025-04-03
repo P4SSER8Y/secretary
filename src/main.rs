@@ -109,13 +109,13 @@ async fn go(config: &Figment) -> Result<(), rocket::Error> {
         wtf = qweather::build(wtf, &config).await;
     }
     if is_enabled(&config, "kindle", false) {
-        wtf = kindle::build("/kindle", wtf, &config);
+        wtf = kindle::build("/kindle/", wtf, &config);
     }
     if is_enabled(&config, "meme", false) {
-        wtf = meme::build("/meme", wtf, &config).await.unwrap();
+        wtf = meme::build("/meme/", wtf, &config).await.unwrap();
     }
     if is_enabled(&config, "inbox", false) {
-        wtf = inbox::build("/inbox/api", wtf, &config).await.unwrap();
+        wtf = inbox::build("/inbox/api/", wtf, &config).await.unwrap();
     }
     if let Ok(ui) = config.find_value("ui_path") {
         info!("{:#?}", ui);
