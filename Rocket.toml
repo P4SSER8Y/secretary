@@ -15,6 +15,7 @@ bark = true
 let_server_run = true
 inbox = true
 tsdb = true
+meme = true
 
 [default.kindle]
 style = "<0,1,2>"
