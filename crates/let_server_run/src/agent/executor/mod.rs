@@ -18,7 +18,7 @@ pub async fn execute(
 ) -> Result<String, anyhow::Error> {
     match parsers::parser(message) {
         Ok((alias, args)) => {
-            let alias_lower = alias.to_lowercase();
+            let alias_lower = alias.to_ascii_lowercase();
             match config.get(&alias_lower) {
                 Some(cfg) => match cfg {
                     ExecutorType::Echo(_) => echo::execute(alias, &args, "").await,

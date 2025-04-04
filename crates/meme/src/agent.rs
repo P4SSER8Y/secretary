@@ -2,7 +2,8 @@ use anyhow::{anyhow, Context, Result};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use image::{guess_format, ImageReader};
 use jsonwebtoken::{decode, DecodingKey, Validation};
-use log::info;
+#[allow(unused_imports)]
+use log::{debug, info};
 use rocket::{
     serde::Deserialize,
     tokio::{
@@ -12,11 +13,11 @@ use rocket::{
 };
 use s3::Bucket;
 use serde::Serialize;
-use std::io::Cursor;
 use std::{
     collections::{HashMap, HashSet},
     sync::OnceLock,
 };
+use std::{io::Cursor, sync::Arc};
 
 #[derive(Deserialize, Debug, Serialize, Clone)]
 #[serde(crate = "rocket::serde")]
@@ -34,6 +35,20 @@ pub struct MetaData {
     pub tags: Vec<String>,
 }
 
+impl PartialEq for MetaData {
+    fn eq(&self, other: &Self) -> bool {
+        self.uuid == other.uuid
+    }
+}
+
+impl std::hash::Hash for MetaData {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.uuid.hash(state)
+    }
+}
+
+impl Eq for MetaData {}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TokenPayload {
     #[serde(alias = "n")]
@@ -45,9 +60,22 @@ pub struct TokenPayload {
 }
 
 static BUCKET: OnceLock<Box<s3::Bucket>> = OnceLock::new();
-static BUFFERS: OnceLock<RwLock<HashMap<String, Vec<MetaData>>>> = OnceLock::new();
+static HIDE: OnceLock<Vec<String>> = OnceLock::new();
+
+type MetaListT = Vec<Arc<MetaData>>;
+type TagToMetalistT = HashMap<String, MetaListT>; // HashMap<tag, list>
+type OwnerListT = HashMap<String, TagToMetalistT>; // HashMap<owner, full_list>
+static BUFFERS: OnceLock<RwLock<OwnerListT>> = OnceLock::new();
 static JWT_SECRET_KEY: OnceLock<DecodingKey> = OnceLock::new();
 static JWT_VALIDATION: OnceLock<Validation> = OnceLock::new();
+
+pub fn split_tags(tags: Option<&str>) -> Vec<&str> {
+    tags.unwrap_or("")
+        .split(&[',', '，', ';', '；'][..])
+        .filter(|s| s.len() > 0)
+        .map(|s| s.trim())
+        .collect()
+}
 
 pub fn check(token: &str) -> Result<TokenPayload> {
     // check if bearer is valid JWT token with AES256 algorithm
@@ -73,12 +101,26 @@ pub async fn update(name: &str) -> Result<()> {
         info!("update buffer for {}", name);
         let bucket = BUCKET.get().with_context(|| anyhow!("BUCKET not set"))?;
         let list = bucket.list(format!("meta/{}", name), None).await?;
-        let mut result = Vec::new();
+        let mut result = HashMap::new();
         for list in list {
             for object in list.contents {
-                let data = bucket.get_object(object.key).await?;
-                let meta: MetaData = serde_yaml::from_slice(data.as_slice())?;
-                result.push(meta);
+                let data = bucket.get_object(object.key.clone()).await?;
+                let data = serde_yaml::from_slice::<MetaData>(data.as_slice());
+                if data.is_err() {
+                    log::error!("cannot parse {}", object.key);
+                    continue;
+                }
+                let meta = Arc::new(data.unwrap());
+                for tag in meta
+                    .tags
+                    .iter()
+                    .map(|item| item.trim().to_ascii_lowercase())
+                {
+                    result
+                        .entry(tag)
+                        .or_insert_with(Vec::new)
+                        .push(meta.clone());
+                }
             }
         }
         if result.len() > 0 {
@@ -126,7 +168,7 @@ pub async fn update(name: &str) -> Result<()> {
     t
 }
 
-pub async fn list(name: &str) -> Result<Vec<MetaData>> {
+pub async fn list(name: &str, filter: Option<&str>) -> Result<Vec<MetaData>> {
     let buffer = BUFFERS
         .get()
         .with_context(|| anyhow!("BUFFERS not set"))?
@@ -140,10 +182,47 @@ pub async fn list(name: &str) -> Result<Vec<MetaData>> {
         .get_or_init(|| RwLock::new(HashMap::new()))
         .read()
         .await;
-    match buffer.get(name) {
-        Some(result) => Ok(result.clone()),
-        None => Err(anyhow!("no such name")),
+    let buffer = buffer.get(name);
+    if buffer.is_none() {
+        return Err(anyhow!("no such name"));
     }
+    let buffer = buffer.unwrap();
+    let mut result: HashSet<Arc<MetaData>> = HashSet::new();
+    let filter: Vec<_> = split_tags(filter)
+        .iter()
+        .map(|s| s.to_ascii_lowercase())
+        .collect();
+    if filter.len() > 0 {
+        for key in buffer.keys() {
+            if !key.contains(&filter[0]) {
+                continue;
+            }
+            for item in buffer.get(key).unwrap() {
+                if filter
+                    .iter()
+                    .all(|f| item.tags.iter().any(|tag| tag.contains(f)))
+                {
+                    result.insert(item.clone());
+                }
+            }
+        }
+    } else {
+        for item in buffer {
+            item.1.iter().for_each(|item| {
+                result.insert(item.clone());
+            });
+        }
+        for filter in HIDE.get().unwrap_or(&Vec::new()) {
+            for key in buffer.keys() {
+                if key.contains(filter) {
+                    buffer.get(key).unwrap().iter().for_each(|item| {
+                        result.remove(item);
+                    });
+                }
+            }
+        }
+    }
+    Ok(result.drain().map(|x| MetaData::clone(&x)).collect())
 }
 
 pub async fn upload(key: &str, data: &[u8]) -> anyhow::Result<()> {
@@ -191,6 +270,7 @@ pub async fn init(
     access_key: &str,
     secret_key: &str,
     jwt_secret_key: &str,
+    hide: &Vec<&str>,
 ) -> anyhow::Result<()> {
     let region = s3::Region::Custom {
         region: region.to_string(),
@@ -214,6 +294,8 @@ pub async fn init(
     let bucket = Bucket::new(bucket, region, credentials)?.with_path_style();
     BUCKET.get_or_init(|| bucket);
     BUFFERS.get_or_init(|| RwLock::new(HashMap::new()));
+
+    HIDE.get_or_init(|| hide.iter().map(|s| s.to_ascii_lowercase()).collect());
 
     return Ok(());
 }

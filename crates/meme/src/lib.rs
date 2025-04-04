@@ -135,9 +135,9 @@ async fn everything() -> (Status, &'static str) {
     (Status::Unauthorized, "WTF")
 }
 
-#[get("/list")]
-async fn list(data: TokenPayload) -> Json<Vec<MetaData>> {
-    let list = agent::list(&data.name).await;
+#[get("/list?<filter>")]
+async fn list(data: TokenPayload, filter: Option<&str>) -> Json<Vec<MetaData>> {
+    let list = agent::list(&data.name, filter).await;
     Json(list.unwrap_or(Vec::new()))
 }
 
@@ -165,10 +165,16 @@ impl<'r, 'o: 'r> Responder<'r, 'o> for FileContent {
     }
 }
 
-#[get("/random?<t>")]
-async fn random(data: TokenPayload, t: bool) -> FileContent {
-    let list = agent::list(&data.name).await;
+#[get("/random?<t>&<filter>")]
+async fn random(data: TokenPayload, t: bool, filter: Option<&str>) -> FileContent {
+    let list = agent::list(&data.name, filter).await;
     let list = list.unwrap_or(Vec::new());
+    if list.len() == 0 {
+        return FileContent {
+            content_type: "text/plain".to_string(),
+            body: Err(anyhow!("WTF")),
+        };
+    }
     let idx = rand::rng().random_range(0..list.len());
     let item = &list[idx];
     if t {
@@ -218,14 +224,6 @@ async fn thumbnail(data: Form<UploadedImage<'_>>) -> (ContentType, Vec<u8>) {
 
 #[post("/upload", data = "<data>", format = "multipart/form-data")]
 async fn upload(data: Form<UploadedImage<'_>>, token: TokenPayload) -> (Status, String) {
-    fn split_tags(tags: Option<&str>) -> Vec<String> {
-        tags.unwrap_or("")
-            .split(&[',', '，', ';', '；'][..])
-            .filter(|s| s.len() > 0)
-            .map(|s| s.trim())
-            .map(|s| s.to_string())
-            .collect()
-    }
     let body = data.file;
     if body.len() == 0 {
         return (Status::NoContent, "empty file".to_string());
@@ -248,7 +246,10 @@ async fn upload(data: Form<UploadedImage<'_>>, token: TokenPayload) -> (Status, 
         uuid: uuid.clone(),
         owner: token.name.to_string(),
         size: data.file.len(),
-        tags: split_tags(data.tags),
+        tags: agent::split_tags(data.tags)
+            .iter()
+            .map(|s| s.to_string())
+            .collect(),
     };
 
     let raw_key = format!("raw/{}/{}", meta.owner, meta.filename);
@@ -324,6 +325,16 @@ pub async fn build(
         .as_str()
         .ok_or(anyhow!("jwt_secret_key not found"))?
         .to_owned();
+    let hide = config
+        .find_value("meme.hide")?;
+    let hide = hide
+        .as_array()
+        .ok_or(anyhow!("hide not found"))?
+        .iter()
+        .map(|item| item.as_str())
+        .filter(|item| item.is_some() && item.unwrap().len() > 0)
+        .map(|item| item.unwrap())
+        .collect();
 
     init(
         &endpoint,
@@ -332,6 +343,7 @@ pub async fn build(
         &access_key,
         &secret_key,
         &jwt_secret_key,
+        &hide,
     )
     .await?;
 
