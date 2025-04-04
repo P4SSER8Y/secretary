@@ -161,6 +161,9 @@ pub async fn update(name: &str) -> Result<()> {
         set.insert(name.to_string());
     }
     let t = main(name).await;
+    if t.is_err() {
+        log::error!("update {} failed: {:?}", name, t);
+    }
     {
         let mut set = LOCK.get_or_init(|| Mutex::new(HashSet::new())).lock().await;
         set.remove(name);
