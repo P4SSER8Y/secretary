@@ -53,3 +53,5 @@ secret_key = ""
 jwt_secret_key = ""
 jwt_gate = ""
 hide = []
+key_salt = ""
+key_file = "meme_key.yaml"

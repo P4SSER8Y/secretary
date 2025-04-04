@@ -32,3 +32,4 @@ image = { version = "0.25.6", features = [
     "png",
     "webp",
 ] }
+rust-crypto = "0.2.36"

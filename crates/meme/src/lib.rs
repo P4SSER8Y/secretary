@@ -34,45 +34,54 @@ impl<'a> FromRequest<'a> for TokenPayload {
     type Error = anyhow::Error;
 
     async fn from_request(request: &'a Request<'_>) -> Outcome<Self, Self::Error> {
-        fn parse_from_query<'a>(request: &'a Request<'_>) -> anyhow::Result<String> {
+        fn parse_from_query<'a>(request: &'a Request<'_>) -> anyhow::Result<&'a str> {
             let bearer = request
-                .query_value::<String>("token")
+                .query_value::<&str>("token")
                 .ok_or(anyhow!("No token"))?
                 .unwrap();
             Ok(bearer)
         }
 
-        fn parse_from_cookies<'a>(request: &'a Request<'_>) -> anyhow::Result<String> {
+        fn parse_from_cookies<'a>(request: &'a Request<'_>) -> anyhow::Result<&'a str> {
             let bearer = request
                 .cookies()
                 .get("token")
                 .ok_or(anyhow!("No token"))?
-                .value()
-                .to_string();
+                .value();
             Ok(bearer)
         }
 
-        fn parse_from_header<'a>(request: &'a Request<'_>) -> anyhow::Result<String> {
+        fn parse_from_header<'a>(request: &'a Request<'_>) -> anyhow::Result<&'a str> {
             let bearer = request
                 .headers()
                 .get_one("token")
                 .ok_or(anyhow!("No bearer token"))?;
-            let bearer = bearer.replace("Bearer ", "");
             Ok(bearer)
+        }
+
+        fn parse_key<'a>(request: &'a Request<'_>) -> anyhow::Result<&'a str> {
+            let key = request
+                .query_value::<&str>("key")
+                .ok_or(anyhow!("No key"))?
+                .unwrap();
+            Ok(key)
         }
 
         // check from header, cookies, query
         let bearer = parse_from_header(request)
             .or_else(|_| parse_from_cookies(request))
             .or_else(|_| parse_from_query(request));
-
-        if let Err(_) = bearer {
-            return Outcome::Forward(Status::Unauthorized);
+        if let Ok(bearer) = bearer {
+            if let Ok(claims) = agent::check(bearer.trim()) {
+                return Outcome::Success(claims);
+            }
         }
-        match agent::check(bearer.unwrap().trim()) {
-            Ok(claims) => Outcome::Success(claims),
-            Err(_e) => Outcome::Forward(Status::Unauthorized),
+        if let Ok(key) = parse_key(request) {
+            if let Ok(claims) = agent::check_key(key) {
+                return Outcome::Success(claims.clone());
+            }
         }
+        Outcome::Forward(Status::Unauthorized)
     }
 }
 
@@ -257,16 +266,16 @@ async fn upload(data: Form<UploadedImage<'_>>, token: TokenPayload) -> (Status, 
     let meta_key = format!("meta/{}/{}.yml", meta.owner, meta.uuid);
     let meta_raw = serde_yaml::to_string(&meta).unwrap();
     {
-        let raw = agent::upload(&raw_key, data.file);
-        let thumbnail = agent::upload(&thumbnail_key, &thumbnail.0);
-        let meta = agent::upload(&meta_key, meta_raw.as_bytes());
+        let u_raw = agent::upload(&raw_key, data.file);
+        let u_thumbnail = agent::upload(&thumbnail_key, &thumbnail.0);
+        let u_meta = agent::upload(&meta_key, meta_raw.as_bytes());
 
-        let result = future::join_all(vec![raw, thumbnail, meta])
+        let result = future::join_all(vec![u_raw, u_thumbnail, u_meta])
             .await
             .iter()
             .all(|r| r.is_ok());
         if result {
-            (Status::Ok, uuid)
+            (Status::Ok, serde_json::to_string(&meta).unwrap())
         } else {
             (Status::InternalServerError, "upload failed".to_string())
         }
@@ -334,6 +343,16 @@ pub async fn build(
         .filter(|item| item.is_some() && item.unwrap().len() > 0)
         .map(|item| item.unwrap())
         .collect();
+    let key_file = config
+        .find_value("meme.key_file")?
+        .as_str()
+        .ok_or(anyhow!("key_file not found"))?
+        .to_owned();
+    let key_salt = config
+        .find_value("meme.key_salt")?
+        .as_str()
+        .ok_or(anyhow!("key_salt not found"))?
+        .to_owned();
 
     init(
         &endpoint,
@@ -343,6 +362,8 @@ pub async fn build(
         &secret_key,
         &jwt_secret_key,
         &hide,
+        &key_salt,
+        &key_file,
     )
     .await?;
 

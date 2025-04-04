@@ -1,5 +1,6 @@
 use anyhow::{anyhow, Context, Result};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
+use crypto::{digest::Digest, sha2::Sha256};
 use image::{guess_format, ImageReader};
 use jsonwebtoken::{decode, DecodingKey, Validation};
 #[allow(unused_imports)]
@@ -49,7 +50,7 @@ impl std::hash::Hash for MetaData {
 
 impl Eq for MetaData {}
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TokenPayload {
     #[serde(alias = "n")]
     pub name: String,
@@ -61,6 +62,8 @@ pub struct TokenPayload {
 
 static BUCKET: OnceLock<Box<s3::Bucket>> = OnceLock::new();
 static HIDE: OnceLock<Vec<String>> = OnceLock::new();
+static KEY_DB: OnceLock<HashMap<String, TokenPayload>> = OnceLock::new();
+static KEY_SALT: OnceLock<String> = OnceLock::new();
 
 type MetaListT = Vec<Arc<MetaData>>;
 type TagToMetalistT = HashMap<String, MetaListT>; // HashMap<tag, list>
@@ -88,6 +91,18 @@ pub fn check(token: &str) -> Result<TokenPayload> {
     let mut claims = decode::<TokenPayload>(token, key, validation)?.claims;
     claims.raw = token.to_string();
     Ok(claims)
+}
+
+pub fn check_key(key: &str) -> Result<&TokenPayload> {
+    let mut hasher = Sha256::new();
+    hasher.input_str(key);
+    hasher.input_str(KEY_SALT.get().unwrap());
+    let hash = hasher.result_str();
+    let db = KEY_DB.get().unwrap();
+    match db.get(&hash) {
+        Some(value) => Ok(value),
+        None => Err(anyhow!("not matched")),
+    }
 }
 
 pub async fn get_content(path: &str) -> Result<Vec<u8>> {
@@ -274,6 +289,8 @@ pub async fn init(
     secret_key: &str,
     jwt_secret_key: &str,
     hide: &Vec<&str>,
+    key_salt: &str,
+    key_file: &str,
 ) -> anyhow::Result<()> {
     let region = s3::Region::Custom {
         region: region.to_string(),
@@ -288,7 +305,6 @@ pub async fn init(
         expiration: None,
     };
 
-    // base64 解码出 pem key
     let key = BASE64.decode(jwt_secret_key)?;
     let key = DecodingKey::from_ec_pem(&key)?;
     JWT_SECRET_KEY.get_or_init(|| key);
@@ -299,6 +315,22 @@ pub async fn init(
     BUFFERS.get_or_init(|| RwLock::new(HashMap::new()));
 
     HIDE.get_or_init(|| hide.iter().map(|s| s.to_ascii_lowercase()).collect());
+
+    let key_db = std::fs::read_to_string(key_file);
+    if key_db.is_err() {
+        log::error!("read {} failed", key_file);
+    } else {
+        let key_db = key_db.unwrap();
+        let key_db = serde_yaml::from_str::<HashMap<String, TokenPayload>>(&key_db);
+        if key_db.is_err() {
+            log::error!("parse {} failed: {:?}", key_file, key_db.err());
+        } else {
+            let key_db = key_db.unwrap();
+            KEY_DB.get_or_init(|| key_db);
+        }
+    }
+    KEY_DB.get_or_init(|| HashMap::new());
+    KEY_SALT.get_or_init(|| key_salt.to_string());
 
     return Ok(());
 }
