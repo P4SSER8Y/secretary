@@ -66,9 +66,12 @@ static KEY_DB: OnceLock<HashMap<String, TokenPayload>> = OnceLock::new();
 static KEY_SALT: OnceLock<String> = OnceLock::new();
 
 type MetaListT = Vec<Arc<MetaData>>;
+type UuidToMetaListT = HashMap<String, Arc<MetaData>>;
+type OwnerToUuidListT = HashMap<String, UuidToMetaListT>;
 type TagToMetalistT = HashMap<String, MetaListT>; // HashMap<tag, list>
-type OwnerListT = HashMap<String, TagToMetalistT>; // HashMap<owner, full_list>
-static BUFFERS: OnceLock<RwLock<OwnerListT>> = OnceLock::new();
+type OwnerToTagToMetaListT = HashMap<String, TagToMetalistT>; // HashMap<owner, full_list>
+static TAG_BUFFERS: OnceLock<RwLock<OwnerToTagToMetaListT>> = OnceLock::new();
+static UUID_BUFFERS: OnceLock<RwLock<OwnerToUuidListT>> = OnceLock::new();
 static JWT_SECRET_KEY: OnceLock<DecodingKey> = OnceLock::new();
 static JWT_VALIDATION: OnceLock<Validation> = OnceLock::new();
 
@@ -116,7 +119,8 @@ pub async fn update(name: &str) -> Result<()> {
         info!("update buffer for {}", name);
         let bucket = BUCKET.get().with_context(|| anyhow!("BUCKET not set"))?;
         let list = bucket.list(format!("meta/{}", name), None).await?;
-        let mut result = HashMap::new();
+        let mut tag_result = HashMap::new();
+        let mut uuid_result = HashMap::new();
         for list in list {
             for object in list.contents {
                 let data = bucket.get_object(object.key.clone()).await?;
@@ -131,19 +135,20 @@ pub async fn update(name: &str) -> Result<()> {
                     .iter()
                     .map(|item| item.trim().to_ascii_lowercase())
                 {
-                    result
+                    tag_result
                         .entry(tag)
                         .or_insert_with(Vec::new)
                         .push(meta.clone());
                 }
+                uuid_result.insert(meta.uuid.clone(), meta);
             }
         }
-        if result.len() > 0 {
-            let mut buffer = BUFFERS
-                .get_or_init(|| RwLock::new(HashMap::new()))
-                .write()
-                .await;
-            buffer.insert(name.to_owned(), result);
+        if tag_result.len() > 0 {
+            let mut tag_buffer = TAG_BUFFERS.get().unwrap().write().await;
+            tag_buffer.insert(name.to_owned(), tag_result);
+
+            let mut uuid_buffer = UUID_BUFFERS.get().unwrap().write().await;
+            uuid_buffer.insert(name.to_owned(), uuid_result);
             info!("finish update buffer for {}", name);
             Ok(())
         } else {
@@ -186,8 +191,23 @@ pub async fn update(name: &str) -> Result<()> {
     t
 }
 
+pub async fn get_meta_by_uuid(name: &str, uuid: &str) -> Result<Arc<MetaData>> {
+    let buffer = UUID_BUFFERS.get().unwrap().read().await;
+    let buffer = buffer.get(name);
+    if buffer.is_none() {
+        return Err(anyhow!("no such name"));
+    }
+    let buffer = buffer.unwrap();
+    let buffer = buffer.get(uuid);
+    if buffer.is_none() {
+        return Err(anyhow!("no such uuid"));
+    }
+    let buffer = buffer.unwrap();
+    Ok(buffer.clone())
+}
+
 pub async fn list(name: &str, filter: Option<&str>) -> Result<Vec<MetaData>> {
-    let buffer = BUFFERS
+    let buffer = TAG_BUFFERS
         .get()
         .with_context(|| anyhow!("BUFFERS not set"))?
         .read()
@@ -196,7 +216,7 @@ pub async fn list(name: &str, filter: Option<&str>) -> Result<Vec<MetaData>> {
         drop(buffer);
         update(name).await?;
     }
-    let buffer = BUFFERS
+    let buffer = TAG_BUFFERS
         .get_or_init(|| RwLock::new(HashMap::new()))
         .read()
         .await;
@@ -312,7 +332,8 @@ pub async fn init(
 
     let bucket = Bucket::new(bucket, region, credentials)?.with_path_style();
     BUCKET.get_or_init(|| bucket);
-    BUFFERS.get_or_init(|| RwLock::new(HashMap::new()));
+    TAG_BUFFERS.get_or_init(|| RwLock::new(HashMap::new()));
+    UUID_BUFFERS.get_or_init(|| RwLock::new(HashMap::new()));
 
     HIDE.get_or_init(|| hide.iter().map(|s| s.to_ascii_lowercase()).collect());
 

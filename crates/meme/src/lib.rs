@@ -213,7 +213,7 @@ struct UploadedImage<'r> {
 
 #[cfg(debug_assertions)]
 #[post("/thumbnail", data = "<data>", format = "multipart/form-data")]
-async fn thumbnail(data: Form<UploadedImage<'_>>) -> (ContentType, Vec<u8>) {
+async fn preview_thumbnail(data: Form<UploadedImage<'_>>) -> (ContentType, Vec<u8>) {
     let body = data.file;
     if body.len() == 0 {
         return (ContentType::Text, "failed to read data".as_bytes().to_vec());
@@ -228,6 +228,58 @@ async fn thumbnail(data: Form<UploadedImage<'_>>) -> (ContentType, Vec<u8>) {
             ContentType::Text,
             "failed to generate thumbnail".as_bytes().to_vec(),
         ),
+    }
+}
+
+#[get("/raw/<uuid>")]
+async fn get_raw(uuid: &str, token: TokenPayload) -> FileContent {
+    let meta = agent::get_meta_by_uuid(&token.name, uuid).await;
+    if meta.is_err() {
+        return FileContent {
+            content_type: "text/plain".to_owned(),
+            body: Ok(format!("{:?}", meta.err()).into()),
+        };
+    }
+    let meta = meta.unwrap();
+    let data = agent::get_content(&format!("raw/{}/{}", meta.owner, meta.filename)).await;
+    if data.is_err() {
+        return FileContent {
+            content_type: "text/plain".to_owned(),
+            body: Ok(format!("{:?}", data.err()).into()),
+        };
+    }
+    let data = data.unwrap();
+    FileContent {
+        content_type: meta.content_type.to_owned(),
+        body: Ok(data),
+    }
+}
+
+#[get("/thumbnail/<uuid>")]
+async fn get_thumbnail(uuid: &str, token: TokenPayload) -> FileContent {
+    let meta = agent::get_meta_by_uuid(&token.name, uuid).await;
+    if meta.is_err() {
+        return FileContent {
+            content_type: "text/plain".to_owned(),
+            body: Ok(format!("{:?}", meta.err()).into()),
+        };
+    }
+    let meta = meta.unwrap();
+    let data = agent::get_content(&format!("thumbnail/{}/{}", meta.owner, meta.thumbnail)).await;
+    if data.is_err() {
+        return FileContent {
+            content_type: "text/plain".to_owned(),
+            body: Ok(format!("{:?}", data.err()).into()),
+        };
+    }
+    let data = data.unwrap();
+    let content_type = match &meta.thumbnail_content_type {
+        Some(content_type) => content_type.clone(),
+        None => "image/jpeg".to_owned(),
+    };
+    FileContent {
+        content_type: content_type,
+        body: Ok(data),
     }
 }
 
@@ -378,9 +430,11 @@ pub async fn build(
             login,
             logout,
             upload,
+            get_raw,
+            get_thumbnail,
         ],
     );
     #[cfg(debug_assertions)]
-    let build = build.mount(base, routes![thumbnail]);
+    let build = build.mount(base, routes![preview_thumbnail]);
     Ok(build)
 }
