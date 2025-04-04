@@ -4,7 +4,7 @@ local = "Local.toml" # override configuration
 level = "INFO"
 address = "0.0.0.0"
 port = 8000
-limits = { file = 67108864 }
+limits = { file = 67108864, data-form = 67108864, bytes = 67108864 }
 ui_path = "ui"
 host = ""
 

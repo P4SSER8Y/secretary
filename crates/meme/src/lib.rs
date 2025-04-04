@@ -9,14 +9,19 @@ use figment::Figment;
 use log::info;
 use rand::{self, Rng};
 use rocket::{
+    form::Form,
+    futures::future,
     get,
     http::{ContentType, CookieJar, Status},
+    post,
     request::{FromRequest, Outcome},
     response::{self, status::NotFound, Redirect, Responder},
     routes,
     serde::json::Json,
-    tokio, Build, Request, Response, Rocket,
+    tokio::{self},
+    Build, FromForm, Request, Response, Rocket,
 };
+use uuid::Uuid;
 
 static ENDPOINT: OnceLock<String> = OnceLock::new();
 static BUCKET: OnceLock<String> = OnceLock::new();
@@ -50,7 +55,7 @@ impl<'a> FromRequest<'a> for TokenPayload {
         fn parse_from_header<'a>(request: &'a Request<'_>) -> anyhow::Result<String> {
             let bearer = request
                 .headers()
-                .get_one("Authorization")
+                .get_one("token")
                 .ok_or(anyhow!("No bearer token"))?;
             let bearer = bearer.replace("Bearer ", "");
             Ok(bearer)
@@ -185,6 +190,88 @@ async fn random(data: TokenPayload, t: bool) -> FileContent {
     }
 }
 
+#[derive(FromForm)]
+struct UploadedImage<'r> {
+    file: &'r [u8],
+    tags: Option<&'r str>,
+}
+
+#[cfg(debug_assertions)]
+#[post("/thumbnail", data = "<data>", format = "multipart/form-data")]
+async fn thumbnail(data: Form<UploadedImage<'_>>) -> (ContentType, Vec<u8>) {
+    let body = data.file;
+    if body.len() == 0 {
+        return (ContentType::Text, "failed to read data".as_bytes().to_vec());
+    }
+    let data = agent::generate_thumbnail(body).await;
+    match data {
+        Ok(data) => (
+            ContentType::parse_flexible(data.2).unwrap_or(ContentType::Any),
+            data.0,
+        ),
+        Err(_) => (
+            ContentType::Text,
+            "failed to generate thumbnail".as_bytes().to_vec(),
+        ),
+    }
+}
+
+#[post("/upload", data = "<data>", format = "multipart/form-data")]
+async fn upload(data: Form<UploadedImage<'_>>, token: TokenPayload) -> (Status, String) {
+    fn split_tags(tags: Option<&str>) -> Vec<String> {
+        tags.unwrap_or("")
+            .split(&[',', '，', ';', '；'][..])
+            .filter(|s| s.len() > 0)
+            .map(|s| s.trim())
+            .map(|s| s.to_string())
+            .collect()
+    }
+    let body = data.file;
+    if body.len() == 0 {
+        return (Status::NoContent, "empty file".to_string());
+    }
+    let uuid = Uuid::new_v4().to_string();
+    let thumbnail = agent::generate_thumbnail(body).await;
+    if thumbnail.is_err() {
+        return (Status::InternalServerError, "failed to convert".to_string());
+    }
+    let thumbnail = thumbnail.unwrap();
+    let raw_format = agent::guess_image_mime_type(data.file)
+        .await
+        .unwrap_or(("application/octet-stream", ""));
+    let meta = MetaData {
+        timestamp: chrono::Utc::now().to_rfc3339(),
+        content_type: raw_format.0.to_string(),
+        filename: format!("{}.{}", uuid, raw_format.1),
+        thumbnail_content_type: Some(thumbnail.2.to_string()),
+        thumbnail: format!("{}.{}", uuid, thumbnail.1),
+        uuid: uuid.clone(),
+        owner: token.name.to_string(),
+        size: data.file.len(),
+        tags: split_tags(data.tags),
+    };
+
+    let raw_key = format!("raw/{}/{}", meta.owner, meta.filename);
+    let thumbnail_key = format!("thumbnail/{}/{}", meta.owner, meta.thumbnail);
+    let meta_key = format!("meta/{}/{}.yml", meta.owner, meta.uuid);
+    let meta_raw = serde_yaml::to_string(&meta).unwrap();
+    {
+        let raw = agent::upload(&raw_key, data.file);
+        let thumbnail = agent::upload(&thumbnail_key, &thumbnail.0);
+        let meta = agent::upload(&meta_key, meta_raw.as_bytes());
+
+        let result = future::join_all(vec![raw, thumbnail, meta])
+            .await
+            .iter()
+            .all(|r| r.is_ok());
+        if result {
+            (Status::Ok, uuid)
+        } else {
+            (Status::InternalServerError, "upload failed".to_string())
+        }
+    }
+}
+
 pub async fn build(
     base: &'static str,
     build: Rocket<Build>,
@@ -247,7 +334,8 @@ pub async fn build(
         &jwt_secret_key,
     )
     .await?;
-    Ok(build.mount(
+
+    let build = build.mount(
         base,
         routes![
             check,
@@ -256,7 +344,14 @@ pub async fn build(
             list,
             random,
             login,
-            logout
+            logout,
+            upload,
         ],
-    ))
+    );
+    if cfg!(debug_assertions) {
+        let build = build.mount(base, routes![thumbnail]);
+        Ok(build)
+    } else {
+        Ok(build)
+    }
 }

@@ -1,5 +1,6 @@
 use anyhow::{anyhow, Context, Result};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
+use image::{guess_format, ImageReader};
 use jsonwebtoken::{decode, DecodingKey, Validation};
 use log::info;
 use rocket::{
@@ -11,6 +12,7 @@ use rocket::{
 };
 use s3::Bucket;
 use serde::Serialize;
+use std::io::Cursor;
 use std::{
     collections::{HashMap, HashSet},
     sync::OnceLock,
@@ -23,6 +25,8 @@ pub struct MetaData {
     pub content_type: String,
     pub timestamp: String,
     pub filename: String,
+    #[serde(rename = "thumbnail-content-type")]
+    pub thumbnail_content_type: Option<String>,
     pub thumbnail: String,
     pub uuid: String,
     pub owner: String,
@@ -139,6 +143,44 @@ pub async fn list(name: &str) -> Result<Vec<MetaData>> {
     match buffer.get(name) {
         Some(result) => Ok(result.clone()),
         None => Err(anyhow!("no such name")),
+    }
+}
+
+pub async fn upload(key: &str, data: &[u8]) -> anyhow::Result<()> {
+    info!("upload {} bytes to {}", data.len(), key);
+    let bucket = BUCKET.get().with_context(|| anyhow!("BUCKET not set"))?;
+    bucket.put_object(key, data).await?;
+    info!("finish upload {}", key);
+    Ok(())
+}
+
+pub async fn generate_thumbnail(data: &[u8]) -> anyhow::Result<(Vec<u8>, &str, &str)> {
+    let format = image::ImageFormat::WebP;
+    let mut img = ImageReader::new(Cursor::new(data))
+        .with_guessed_format()?
+        .decode()?;
+    let nheight = (img.height() as f32 * 512.0 / img.width() as f32) as u32;
+    img = img.thumbnail(512, nheight);
+    let mut buf = Vec::new();
+    img.write_to(&mut Cursor::new(&mut buf), image::ImageFormat::WebP)?;
+    Ok((buf, format.extensions_str()[0], format.to_mime_type()))
+}
+
+#[allow(dead_code)]
+pub async fn compress(data: &[u8]) -> anyhow::Result<(Vec<u8>, &str)> {
+    let img = ImageReader::new(Cursor::new(data))
+        .with_guessed_format()?
+        .decode()?;
+    let mut buf = Vec::new();
+    img.write_to(&mut Cursor::new(&mut buf), image::ImageFormat::WebP)?;
+    Ok((buf, image::ImageFormat::WebP.to_mime_type()))
+}
+
+pub async fn guess_image_mime_type(data: &[u8]) -> anyhow::Result<(&str, &str)> {
+    let format = guess_format(data);
+    match format {
+        Ok(format) => Ok((format.to_mime_type(), format.extensions_str()[0])),
+        Err(_) => Ok(("application/octet-stream", "")),
     }
 }
 
