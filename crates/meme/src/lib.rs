@@ -325,8 +325,7 @@ pub async fn build(
         .as_str()
         .ok_or(anyhow!("jwt_secret_key not found"))?
         .to_owned();
-    let hide = config
-        .find_value("meme.hide")?;
+    let hide = config.find_value("meme.hide")?;
     let hide = hide
         .as_array()
         .ok_or(anyhow!("hide not found"))?
@@ -360,10 +359,7 @@ pub async fn build(
             upload,
         ],
     );
-    if cfg!(debug_assertions) {
-        let build = build.mount(base, routes![thumbnail]);
-        Ok(build)
-    } else {
-        Ok(build)
-    }
+    #[cfg(debug_assertions)]
+    let build = build.mount(base, routes![thumbnail]);
+    Ok(build)
 }
