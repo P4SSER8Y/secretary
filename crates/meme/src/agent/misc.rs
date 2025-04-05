@@ -1,8 +1,5 @@
 use anyhow::{anyhow, Context, Result};
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
-use crypto::{digest::Digest, sha2::Sha256};
 use image::{guess_format, ImageReader};
-use jsonwebtoken::{decode, DecodingKey, Validation};
 #[allow(unused_imports)]
 use log::{debug, info};
 use rocket::{
@@ -50,20 +47,8 @@ impl std::hash::Hash for MetaData {
 
 impl Eq for MetaData {}
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct TokenPayload {
-    #[serde(alias = "n")]
-    pub name: String,
-    #[serde(alias = "f")]
-    pub family: String,
-    #[serde(default)]
-    pub raw: String,
-}
-
 static BUCKET: OnceLock<Box<s3::Bucket>> = OnceLock::new();
 static HIDE: OnceLock<Vec<String>> = OnceLock::new();
-static KEY_DB: OnceLock<HashMap<String, TokenPayload>> = OnceLock::new();
-static KEY_SALT: OnceLock<String> = OnceLock::new();
 
 type MetaListT = Vec<Arc<MetaData>>;
 type UuidToMetaListT = HashMap<String, Arc<MetaData>>;
@@ -72,8 +57,6 @@ type TagToMetalistT = HashMap<String, MetaListT>; // HashMap<tag, list>
 type OwnerToTagToMetaListT = HashMap<String, TagToMetalistT>; // HashMap<owner, full_list>
 static TAG_BUFFERS: OnceLock<RwLock<OwnerToTagToMetaListT>> = OnceLock::new();
 static UUID_BUFFERS: OnceLock<RwLock<OwnerToUuidListT>> = OnceLock::new();
-static JWT_SECRET_KEY: OnceLock<DecodingKey> = OnceLock::new();
-static JWT_VALIDATION: OnceLock<Validation> = OnceLock::new();
 
 pub fn split_tags(tags: Option<&str>) -> Vec<&str> {
     tags.unwrap_or("")
@@ -81,31 +64,6 @@ pub fn split_tags(tags: Option<&str>) -> Vec<&str> {
         .filter(|s| s.len() > 0)
         .map(|s| s.trim())
         .collect()
-}
-
-pub fn check(token: &str) -> Result<TokenPayload> {
-    // check if bearer is valid JWT token with AES256 algorithm
-    let key = JWT_SECRET_KEY
-        .get()
-        .with_context(|| anyhow!("JWT_SECRET_KEY not set"))?;
-    let validation = JWT_VALIDATION
-        .get()
-        .with_context(|| anyhow!("JWT_VALIDATION not set"))?;
-    let mut claims = decode::<TokenPayload>(token, key, validation)?.claims;
-    claims.raw = token.to_string();
-    Ok(claims)
-}
-
-pub fn check_key(key: &str) -> Result<&TokenPayload> {
-    let mut hasher = Sha256::new();
-    hasher.input_str(key);
-    hasher.input_str(KEY_SALT.get().unwrap());
-    let hash = hasher.result_str();
-    let db = KEY_DB.get().unwrap();
-    match db.get(&hash) {
-        Some(value) => Ok(value),
-        None => Err(anyhow!("not matched")),
-    }
 }
 
 pub async fn get_content(path: &str) -> Result<Vec<u8>> {
@@ -325,33 +283,14 @@ pub async fn init(
         expiration: None,
     };
 
-    let key = BASE64.decode(jwt_secret_key)?;
-    let key = DecodingKey::from_ec_pem(&key)?;
-    JWT_SECRET_KEY.get_or_init(|| key);
-    JWT_VALIDATION.get_or_init(|| Validation::new(jsonwebtoken::Algorithm::ES256));
-
     let bucket = Bucket::new(bucket, region, credentials)?.with_path_style();
     BUCKET.get_or_init(|| bucket);
     TAG_BUFFERS.get_or_init(|| RwLock::new(HashMap::new()));
     UUID_BUFFERS.get_or_init(|| RwLock::new(HashMap::new()));
 
     HIDE.get_or_init(|| hide.iter().map(|s| s.to_ascii_lowercase()).collect());
-
-    let key_db = std::fs::read_to_string(key_file);
-    if key_db.is_err() {
-        log::error!("read {} failed", key_file);
-    } else {
-        let key_db = key_db.unwrap();
-        let key_db = serde_yaml::from_str::<HashMap<String, TokenPayload>>(&key_db);
-        if key_db.is_err() {
-            log::error!("parse {} failed: {:?}", key_file, key_db.err());
-        } else {
-            let key_db = key_db.unwrap();
-            KEY_DB.get_or_init(|| key_db);
-        }
-    }
-    KEY_DB.get_or_init(|| HashMap::new());
-    KEY_SALT.get_or_init(|| key_salt.to_string());
+    
+    super::validation::init(jwt_secret_key, key_salt, key_file).await?;
 
     return Ok(());
 }

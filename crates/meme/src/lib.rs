@@ -2,7 +2,6 @@ mod agent;
 
 use std::{io::Cursor, sync::OnceLock};
 
-use crate::agent::init;
 use agent::{MetaData, TokenPayload};
 use anyhow::anyhow;
 use figment::Figment;
@@ -406,7 +405,7 @@ pub async fn build(
         .ok_or(anyhow!("key_salt not found"))?
         .to_owned();
 
-    init(
+    agent::init(
         &endpoint,
         &region_name,
         &bucket_name,
