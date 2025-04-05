@@ -192,7 +192,10 @@ async fn random(data: TokenPayload, t: bool, filter: Option<&str>) -> FileConten
         ))
         .await;
         FileContent {
-            content_type: "image/jpeg".to_string(),
+            content_type: match &item.thumbnail_content_type {
+                Some(v) => v.clone(),
+                None => "image/jpeg".to_string(),
+            },
             body: data,
         }
     } else {
