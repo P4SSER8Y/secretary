@@ -69,8 +69,8 @@ impl<'a> FromRequest<'a> for TokenPayload {
 
         // check from header, cookies, query
         let bearer = parse_from_header(request)
-            .or_else(|_| parse_from_cookies(request))
-            .or_else(|_| parse_from_query(request));
+            .or_else(|_| parse_from_query(request))
+            .or_else(|_| parse_from_cookies(request));
         if let Ok(bearer) = bearer {
             if let Ok(claims) = agent::check(bearer.trim()) {
                 return Outcome::Success(claims);
