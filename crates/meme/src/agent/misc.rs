@@ -3,14 +3,14 @@ use image::{guess_format, ImageReader};
 #[allow(unused_imports)]
 use log::{debug, info};
 use rocket::{
-    serde::Deserialize,
+    futures::future::join_all,
     tokio::{
         self,
         sync::{Mutex, RwLock},
     },
 };
 use s3::Bucket;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::{
     collections::{HashMap, HashSet},
     sync::OnceLock,
@@ -50,13 +50,9 @@ impl Eq for MetaData {}
 static BUCKET: OnceLock<Box<s3::Bucket>> = OnceLock::new();
 static HIDE: OnceLock<Vec<String>> = OnceLock::new();
 
-type MetaListT = Vec<Arc<MetaData>>;
 type UuidToMetaListT = HashMap<String, Arc<MetaData>>;
 type OwnerToUuidListT = HashMap<String, UuidToMetaListT>;
-type TagToMetalistT = HashMap<String, MetaListT>; // HashMap<tag, list>
-type OwnerToTagToMetaListT = HashMap<String, TagToMetalistT>; // HashMap<owner, full_list>
-static TAG_BUFFERS: OnceLock<RwLock<OwnerToTagToMetaListT>> = OnceLock::new();
-static UUID_BUFFERS: OnceLock<RwLock<OwnerToUuidListT>> = OnceLock::new();
+static META_BUFFERS: OnceLock<RwLock<OwnerToUuidListT>> = OnceLock::new();
 
 pub fn split_tags(tags: Option<&str>) -> Vec<&str> {
     tags.unwrap_or("")
@@ -66,53 +62,62 @@ pub fn split_tags(tags: Option<&str>) -> Vec<&str> {
         .collect()
 }
 
+pub async fn insert(meta: Arc<MetaData>) -> Result<usize> {
+    let buffer = META_BUFFERS
+        .get()
+        .with_context(|| anyhow!("META_BUFFERS not set"))?;
+    let mut buffer = buffer.write().await;
+    if let Some(list) = buffer.get_mut(&meta.owner) {
+        list.insert(meta.uuid.to_ascii_lowercase(), meta.clone());
+    } else {
+        let mut list = HashMap::new();
+        list.insert(meta.uuid.clone(), meta.clone());
+        buffer.insert(meta.owner.to_string(), list);
+    }
+    Ok(buffer.get(&meta.owner).unwrap().len())
+}
+
 pub async fn get_content(path: &str) -> Result<Vec<u8>> {
     let bucket = BUCKET.get().with_context(|| anyhow!("BUCKET not set"))?;
     let data = bucket.get_object(path).await?;
     Ok(data.to_vec())
 }
 
-pub async fn update(name: &str) -> Result<()> {
-    async fn main(name: &str) -> Result<()> {
-        info!("update buffer for {}", name);
-        let bucket = BUCKET.get().with_context(|| anyhow!("BUCKET not set"))?;
-        let list = bucket.list(format!("meta/{}", name), None).await?;
-        let mut tag_result = HashMap::new();
-        let mut uuid_result = HashMap::new();
-        for list in list {
-            for object in list.contents {
-                let data = bucket.get_object(object.key.clone()).await?;
-                let data = serde_yaml::from_slice::<MetaData>(data.as_slice());
-                if data.is_err() {
-                    log::error!("cannot parse {}", object.key);
-                    continue;
-                }
-                let meta = Arc::new(data.unwrap());
-                for tag in meta
-                    .tags
-                    .iter()
-                    .map(|item| item.trim().to_ascii_lowercase())
-                {
-                    tag_result
-                        .entry(tag)
-                        .or_insert_with(Vec::new)
-                        .push(meta.clone());
-                }
-                uuid_result.insert(meta.uuid.clone(), meta);
-            }
+async fn full_update(name: &str) -> Result<()> {
+    async fn update_one(bucket: &Box<Bucket>, key: String) -> Result<usize> {
+        debug!("update {}", key);
+        let data = bucket.get_object(key.clone()).await?;
+        let data = serde_yaml::from_slice::<MetaData>(data.as_slice());
+        if data.is_err() {
+            log::error!("cannot parse {}", key);
+            return Err(anyhow!("cannot parse {}", key));
         }
-        if tag_result.len() > 0 {
-            let mut tag_buffer = TAG_BUFFERS.get().unwrap().write().await;
-            tag_buffer.insert(name.to_owned(), tag_result);
-
-            let mut uuid_buffer = UUID_BUFFERS.get().unwrap().write().await;
-            uuid_buffer.insert(name.to_owned(), uuid_result);
-            info!("finish update buffer for {}", name);
-            Ok(())
-        } else {
-            Err(anyhow!("no such name: {}", name))
+        let result = insert(Arc::new(data.unwrap())).await?;
+        debug!("update {} size={}", key, result);
+        Ok(result)
+    }
+    info!("update buffer for {}", name);
+    let bucket = BUCKET.get().with_context(|| anyhow!("BUCKET not set"))?;
+    let list = bucket.list(format!("meta/{}", name), None).await?;
+    let mut results = Vec::new();
+    for list in list {
+        for object in list.contents {
+            results.push(update_one(bucket, object.key));
         }
     }
+    let todo_result = join_all(results).await;
+    if todo_result
+        .into_iter()
+        .any(|item| item.is_ok() && item.unwrap() > 0)
+    {
+        info!("finish update buffer for {}", name);
+        Ok(())
+    } else {
+        Err(anyhow!("no such name: {}", name))
+    }
+}
+
+pub async fn update(name: &str) -> Result<()> {
     static LOCK: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
     let mut updating = false;
     {
@@ -138,7 +143,7 @@ pub async fn update(name: &str) -> Result<()> {
         let mut set = LOCK.get_or_init(|| Mutex::new(HashSet::new())).lock().await;
         set.insert(name.to_string());
     }
-    let t = main(name).await;
+    let t = full_update(name).await;
     if t.is_err() {
         log::error!("update {} failed: {:?}", name, t);
     }
@@ -150,7 +155,7 @@ pub async fn update(name: &str) -> Result<()> {
 }
 
 pub async fn get_meta_by_uuid(name: &str, uuid: &str) -> Result<Arc<MetaData>> {
-    let buffer = UUID_BUFFERS.get().unwrap().read().await;
+    let buffer = META_BUFFERS.get().unwrap().read().await;
     let buffer = buffer.get(name);
     if buffer.is_none() {
         return Err(anyhow!("no such name"));
@@ -165,60 +170,31 @@ pub async fn get_meta_by_uuid(name: &str, uuid: &str) -> Result<Arc<MetaData>> {
 }
 
 pub async fn list(name: &str, filter: Option<&str>) -> Result<Vec<MetaData>> {
-    let buffer = TAG_BUFFERS
+    let mut result = Vec::new();
+    let buffer = META_BUFFERS
         .get()
-        .with_context(|| anyhow!("BUFFERS not set"))?
-        .read()
-        .await;
-    if !buffer.contains_key(name) {
-        drop(buffer);
-        update(name).await?;
-    }
-    let buffer = TAG_BUFFERS
-        .get_or_init(|| RwLock::new(HashMap::new()))
-        .read()
-        .await;
+        .with_context(|| anyhow!("BUFFERS not set"))?;
+    let buffer = buffer.read().await;
     let buffer = buffer.get(name);
     if buffer.is_none() {
-        return Err(anyhow!("no such name"));
+        return Err(anyhow!("{} not found", name));
     }
     let buffer = buffer.unwrap();
-    let mut result: HashSet<Arc<MetaData>> = HashSet::new();
-    let filter: Vec<_> = split_tags(filter)
+    let buffer = buffer.iter();
+    let filter = split_tags(filter)
         .iter()
         .map(|s| s.to_ascii_lowercase())
-        .collect();
-    if filter.len() > 0 {
-        for key in buffer.keys() {
-            if !key.contains(&filter[0]) {
-                continue;
-            }
-            for item in buffer.get(key).unwrap() {
-                if filter
-                    .iter()
-                    .all(|f| item.tags.iter().any(|tag| tag.contains(f)))
-                {
-                    result.insert(item.clone());
-                }
-            }
-        }
-    } else {
-        for item in buffer {
-            item.1.iter().for_each(|item| {
-                result.insert(item.clone());
-            });
-        }
-        for filter in HIDE.get().unwrap_or(&Vec::new()) {
-            for key in buffer.keys() {
-                if key.contains(filter) {
-                    buffer.get(key).unwrap().iter().for_each(|item| {
-                        result.remove(item);
-                    });
-                }
-            }
+        .collect::<Vec<_>>();
+    for (_, v) in buffer {
+        if filter.iter().all(|f| {
+            v.tags
+                .iter()
+                .any(|tag| tag.to_ascii_lowercase().contains(f))
+        }) {
+            result.push(v.clone());
         }
     }
-    Ok(result.drain().map(|x| MetaData::clone(&x)).collect())
+    Ok(result.into_iter().map(|v| MetaData::clone(&v)).collect())
 }
 
 pub async fn upload(key: &str, data: &[u8]) -> anyhow::Result<()> {
@@ -285,11 +261,10 @@ pub async fn init(
 
     let bucket = Bucket::new(bucket, region, credentials)?.with_path_style();
     BUCKET.get_or_init(|| bucket);
-    TAG_BUFFERS.get_or_init(|| RwLock::new(HashMap::new()));
-    UUID_BUFFERS.get_or_init(|| RwLock::new(HashMap::new()));
+    META_BUFFERS.get_or_init(|| RwLock::new(HashMap::new()));
 
     HIDE.get_or_init(|| hide.iter().map(|s| s.to_ascii_lowercase()).collect());
-    
+
     super::validation::init(jwt_secret_key, key_salt, key_file).await?;
 
     return Ok(());

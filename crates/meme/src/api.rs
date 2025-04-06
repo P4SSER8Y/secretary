@@ -17,7 +17,7 @@ use rocket::{
     serde::json::Json,
     tokio, Build, Rocket,
 };
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 
 static HOST: OnceLock<String> = OnceLock::new();
 static GATE: OnceLock<String> = OnceLock::new();
@@ -238,6 +238,7 @@ async fn upload(data: Form<UploadedImage<'_>>, token: TokenPayload) -> (Status, 
             .iter()
             .all(|r| r.is_ok());
         if result {
+            let _ = agent::insert(Arc::new(meta.clone())).await;
             (Status::Ok, serde_json::to_string(&meta).unwrap())
         } else {
             (Status::InternalServerError, "upload failed".to_string())
