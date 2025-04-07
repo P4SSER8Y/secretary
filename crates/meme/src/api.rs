@@ -120,10 +120,12 @@ async fn latest(data: TokenPayload, n: Option<usize>, filter: Option<&str>) -> F
     match result {
         Some(meta) => FileContent {
             content_type: meta.content_type.to_string(),
+            name: meta.filename.to_owned(),
             body: get_content(&format!("raw/{}/{}", meta.owner, meta.filename)).await,
         },
         None => FileContent {
             content_type: "text/plain".to_string(),
+            name: "".to_owned(),
             body: Err(anyhow!("not found")),
         },
     }
@@ -136,6 +138,7 @@ async fn random(data: TokenPayload, t: bool, filter: Option<&str>) -> FileConten
     if list.len() == 0 {
         return FileContent {
             content_type: "text/plain".to_string(),
+            name: "".to_owned(),
             body: Err(anyhow!("WTF")),
         };
     }
@@ -152,12 +155,14 @@ async fn random(data: TokenPayload, t: bool, filter: Option<&str>) -> FileConten
                 Some(v) => v.clone(),
                 None => "image/jpeg".to_string(),
             },
+            name: item.thumbnail.clone(),
             body: data,
         }
     } else {
         let data = agent::get_content(&format!("{}/{}/{}", "raw", item.owner, item.filename)).await;
         FileContent {
             content_type: item.content_type.clone(),
+            name: item.filename.clone(),
             body: data,
         }
     }
@@ -189,7 +194,8 @@ async fn get_raw(uuid: &str, token: TokenPayload) -> FileContent {
     if meta.is_err() {
         return FileContent {
             content_type: "text/plain".to_owned(),
-            body: Ok(format!("{:?}", meta.err()).into()),
+            name: "".to_string(),
+            body: Err(meta.err().unwrap()),
         };
     }
     let meta = meta.unwrap();
@@ -197,12 +203,14 @@ async fn get_raw(uuid: &str, token: TokenPayload) -> FileContent {
     if data.is_err() {
         return FileContent {
             content_type: "text/plain".to_owned(),
-            body: Ok(format!("{:?}", data.err()).into()),
+            name: "".to_owned(),
+            body: data,
         };
     }
     let data = data.unwrap();
     FileContent {
         content_type: meta.content_type.to_owned(),
+        name: meta.filename.to_owned(),
         body: Ok(data),
     }
 }
@@ -213,7 +221,8 @@ async fn get_thumbnail(uuid: &str, token: TokenPayload) -> FileContent {
     if meta.is_err() {
         return FileContent {
             content_type: "text/plain".to_owned(),
-            body: Ok(format!("{:?}", meta.err()).into()),
+            name: "".to_owned(),
+            body: Err(meta.err().unwrap()),
         };
     }
     let meta = meta.unwrap();
@@ -221,7 +230,8 @@ async fn get_thumbnail(uuid: &str, token: TokenPayload) -> FileContent {
     if data.is_err() {
         return FileContent {
             content_type: "text/plain".to_owned(),
-            body: Ok(format!("{:?}", data.err()).into()),
+            name: "".to_owned(),
+            body: data,
         };
     }
     let data = data.unwrap();
@@ -231,6 +241,7 @@ async fn get_thumbnail(uuid: &str, token: TokenPayload) -> FileContent {
     };
     FileContent {
         content_type: content_type,
+        name: meta.thumbnail.clone(),
         body: Ok(data),
     }
 }
@@ -280,7 +291,10 @@ async fn upload(data: Form<UploadedImage<'_>>, token: TokenPayload) -> (Status, 
             .all(|r| r.is_ok());
         if result {
             let _ = agent::insert(Arc::new(meta.clone())).await;
-            (Status::Ok, serde_json::to_string(&BriefMetaData::from(&meta)).unwrap())
+            (
+                Status::Ok,
+                serde_json::to_string(&BriefMetaData::from(&meta)).unwrap(),
+            )
         } else {
             (Status::InternalServerError, "upload failed".to_string())
         }

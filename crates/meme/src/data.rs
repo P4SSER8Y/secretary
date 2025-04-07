@@ -68,6 +68,7 @@ impl<'a> FromRequest<'a> for TokenPayload {
 
 pub struct FileContent {
     pub content_type: String,
+    pub name: String,
     pub body: anyhow::Result<Vec<u8>>,
 }
 
@@ -78,6 +79,7 @@ impl<'r, 'o: 'r> Responder<'r, 'o> for FileContent {
                 .status(Status::Ok)
                 .raw_header("Content-Type", self.content_type.to_string())
                 .raw_header("Content-Length", body.len().to_string())
+                .raw_header("Content-Disposition", format!("inline; filename={}", self.name))
                 .sized_body(body.len(), Cursor::new(body))
                 .finalize())
         } else {
