@@ -98,6 +98,8 @@ async fn list(
     );
     let list = agent::list(&data.name, filter).await;
     let mut list = list.unwrap_or(Vec::new());
+    let s = s.unwrap_or(0);
+    let e = e.unwrap_or(list.len());
     if let Some(sort) = sort {
         let sort = sort.trim().to_ascii_lowercase();
         let sort = sort.as_str();
@@ -113,13 +115,8 @@ async fn list(
             });
         }
     }
-    let list = list.iter().skip(s.unwrap_or(0));
-    if let Some(e) = e {
-        let list = list.take(e - s.unwrap_or(0));
-        Json(list.map(|v| v.as_ref().into()).collect())
-    } else {
-        Json(list.map(|v| v.as_ref().into()).collect())
-    }
+    let list = list.iter().skip(s).take(e - s);
+    Json(list.map(|v| v.as_ref().into()).collect())
 }
 
 #[get("/latest/<n>?<filter>")]
