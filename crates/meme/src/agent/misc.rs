@@ -85,7 +85,6 @@ pub async fn get_content(path: &str) -> Result<Vec<u8>> {
 
 async fn full_update(name: &str) -> Result<()> {
     async fn update_one(bucket: &Box<Bucket>, key: String) -> Result<usize> {
-        debug!("update {}", key);
         let data = bucket.get_object(key.clone()).await?;
         let data = serde_yaml::from_slice::<MetaData>(data.as_slice());
         if data.is_err() {
@@ -169,7 +168,7 @@ pub async fn get_meta_by_uuid(name: &str, uuid: &str) -> Result<Arc<MetaData>> {
     Ok(buffer.clone())
 }
 
-pub async fn list(name: &str, filter: Option<&str>) -> Result<Vec<MetaData>> {
+pub async fn list(name: &str, filter: Option<&str>) -> Result<Vec<Arc<MetaData>>> {
     let mut result = Vec::new();
     let buffer = META_BUFFERS
         .get()
@@ -194,7 +193,7 @@ pub async fn list(name: &str, filter: Option<&str>) -> Result<Vec<MetaData>> {
             result.push(v.clone());
         }
     }
-    Ok(result.into_iter().map(|v| MetaData::clone(&v)).collect())
+    Ok(result)
 }
 
 pub async fn upload(key: &str, data: &[u8]) -> anyhow::Result<()> {

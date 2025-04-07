@@ -1,8 +1,15 @@
 use std::io::Cursor;
 
+use crate::agent::{self, MetaData, TokenPayload};
 use anyhow::anyhow;
-use rocket::{form::FromForm, http::Status, request::{FromRequest, Outcome}, response::{self, Responder}, Request, Response};
-use crate::agent::{self, TokenPayload};
+use rocket::{
+    form::FromForm,
+    http::Status,
+    request::{FromRequest, Outcome},
+    response::{self, Responder},
+    Request, Response,
+};
+use serde::Serialize;
 
 #[rocket::async_trait]
 impl<'a> FromRequest<'a> for TokenPayload {
@@ -41,7 +48,6 @@ impl<'a> FromRequest<'a> for TokenPayload {
                 .unwrap();
             Ok(key)
         }
-
         // check from header, cookies, query
         let bearer = parse_from_header(request)
             .or_else(|_| parse_from_query(request))
@@ -88,4 +94,21 @@ impl<'r, 'o: 'r> Responder<'r, 'o> for FileContent {
 pub struct UploadedImage<'r> {
     pub file: &'r [u8],
     pub tags: Option<&'r str>,
+}
+
+#[derive(Serialize, Debug)]
+pub struct BriefMetaData {
+    pub uuid: String,
+    pub timestamp: String,
+    pub tags: Vec<String>,
+}
+
+impl From<&MetaData> for BriefMetaData {
+    fn from(meta: &MetaData) -> Self {
+        BriefMetaData {
+            uuid: meta.uuid.clone(),
+            timestamp: meta.timestamp.clone(),
+            tags: meta.tags.clone(),
+        }
+    }
 }

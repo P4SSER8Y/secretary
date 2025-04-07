@@ -1,10 +1,10 @@
 use crate::{
     agent::{self, MetaData, TokenPayload},
-    data::{FileContent, UploadedImage},
+    data::{BriefMetaData, FileContent, UploadedImage},
 };
 use anyhow::anyhow;
 #[allow(dead_code)]
-use log::info;
+use log::{info, debug};
 use rand::Rng;
 use rocket::{
     form::Form,
@@ -82,10 +82,32 @@ async fn everything() -> (Status, &'static str) {
     (Status::Unauthorized, "WTF")
 }
 
-#[get("/list?<filter>")]
-async fn list(data: TokenPayload, filter: Option<&str>) -> Json<Vec<MetaData>> {
+#[get("/list?<filter>&<sort>&<asc>")]
+async fn list(
+    data: TokenPayload,
+    filter: Option<&str>,
+    sort: Option<&str>,
+    asc: bool,
+) -> Json<Vec<BriefMetaData>> {
+    debug!("filter={:?} sort={:?} asc={}", filter, sort, asc);
     let list = agent::list(&data.name, filter).await;
-    Json(list.unwrap_or(Vec::new()))
+    let mut list = list.unwrap_or(Vec::new());
+    if let Some(sort) = sort {
+        let sort = sort.trim().to_ascii_lowercase();
+        let sort = sort.as_str();
+        if asc {
+            list.sort_by(|a, b| match sort {
+                "ts" => a.timestamp.cmp(&b.timestamp),
+                _ => a.uuid.cmp(&b.uuid),
+            });
+        } else {
+            list.sort_by(|b, a| match sort {
+                "ts" => a.timestamp.cmp(&b.timestamp),
+                _ => a.uuid.cmp(&b.uuid),
+            });
+        }
+    }
+    Json(list.iter().map(|v| v.as_ref().into()).collect())
 }
 
 #[get("/random?<t>&<filter>")]
