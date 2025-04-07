@@ -83,14 +83,19 @@ async fn everything() -> (Status, &'static str) {
     (Status::Unauthorized, "WTF")
 }
 
-#[get("/list?<filter>&<sort>&<asc>")]
+#[get("/list?<filter>&<sort>&<asc>&<s>&<e>")]
 async fn list(
     data: TokenPayload,
     filter: Option<&str>,
     sort: Option<&str>,
     asc: bool,
+    s: Option<usize>,
+    e: Option<usize>,
 ) -> Json<Vec<BriefMetaData>> {
-    debug!("filter={:?} sort={:?} asc={}", filter, sort, asc);
+    debug!(
+        "filter={:?} sort={:?} asc={} range={:?}:{:?}",
+        filter, sort, asc, s, e
+    );
     let list = agent::list(&data.name, filter).await;
     let mut list = list.unwrap_or(Vec::new());
     if let Some(sort) = sort {
@@ -108,7 +113,13 @@ async fn list(
             });
         }
     }
-    Json(list.iter().map(|v| v.as_ref().into()).collect())
+    let list = list.iter().skip(s.unwrap_or(0));
+    if let Some(e) = e {
+        let list = list.take(e - s.unwrap_or(0));
+        Json(list.map(|v| v.as_ref().into()).collect())
+    } else {
+        Json(list.map(|v| v.as_ref().into()).collect())
+    }
 }
 
 #[get("/latest/<n>?<filter>")]
