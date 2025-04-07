@@ -1,10 +1,10 @@
 use crate::{
-    agent::{self, MetaData, TokenPayload},
+    agent::{self, get_content, MetaData, TokenPayload},
     data::{BriefMetaData, FileContent, UploadedImage},
 };
 use anyhow::anyhow;
 #[allow(dead_code)]
-use log::{info, debug};
+use log::{debug, info};
 use rand::Rng;
 use rocket::{
     form::Form,
@@ -15,7 +15,8 @@ use rocket::{
     response::{status::NotFound, Redirect},
     routes,
     serde::json::Json,
-    tokio, Build, Rocket,
+    tokio::{self},
+    Build, Rocket,
 };
 use std::sync::{Arc, OnceLock};
 
@@ -43,7 +44,7 @@ async fn check_with_token(
 async fn check(data: TokenPayload) -> Result<String, NotFound<()>> {
     let name = data.name.clone();
     tokio::spawn(async move {
-        let _ = agent::update(&name).await;
+        let _ = agent::force_update(&name).await;
     });
     Ok(format!("Hello {} of {}", data.name, data.family))
 }
@@ -108,6 +109,24 @@ async fn list(
         }
     }
     Json(list.iter().map(|v| v.as_ref().into()).collect())
+}
+
+#[get("/latest?<n>&<filter>")]
+async fn latest(data: TokenPayload, n: Option<usize>, filter: Option<&str>) -> FileContent {
+    let n = n.unwrap_or(0);
+    let mut list = agent::list(&data.name, filter).await.unwrap_or(Vec::new());
+    list.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+    let result = list.get(n);
+    match result {
+        Some(meta) => FileContent {
+            content_type: meta.content_type.to_string(),
+            body: get_content(&format!("raw/{}/{}", meta.owner, meta.filename)).await,
+        },
+        None => FileContent {
+            content_type: "text/plain".to_string(),
+            body: Err(anyhow!("not found")),
+        },
+    }
 }
 
 #[get("/random?<t>&<filter>")]
@@ -261,7 +280,7 @@ async fn upload(data: Form<UploadedImage<'_>>, token: TokenPayload) -> (Status, 
             .all(|r| r.is_ok());
         if result {
             let _ = agent::insert(Arc::new(meta.clone())).await;
-            (Status::Ok, serde_json::to_string(&meta).unwrap())
+            (Status::Ok, serde_json::to_string(&BriefMetaData::from(&meta)).unwrap())
         } else {
             (Status::InternalServerError, "upload failed".to_string())
         }
@@ -293,6 +312,7 @@ pub async fn build(
             upload,
             get_raw,
             get_thumbnail,
+            latest,
         ],
     ))
 }

@@ -92,7 +92,6 @@ async fn full_update(name: &str) -> Result<()> {
             return Err(anyhow!("cannot parse {}", key));
         }
         let result = insert(Arc::new(data.unwrap())).await?;
-        debug!("update {} size={}", key, result);
         Ok(result)
     }
     info!("update buffer for {}", name);
@@ -116,7 +115,7 @@ async fn full_update(name: &str) -> Result<()> {
     }
 }
 
-pub async fn update(name: &str) -> Result<()> {
+pub async fn force_update(name: &str) -> Result<()> {
     static LOCK: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
     let mut updating = false;
     {
@@ -153,6 +152,21 @@ pub async fn update(name: &str) -> Result<()> {
     t
 }
 
+async fn update(name: &str) -> Result<()> {
+    let buffer = META_BUFFERS
+        .get()
+        .with_context(|| anyhow!("BUFFER not set"))?
+        .read()
+        .await;
+    match !buffer.contains_key(name) {
+        true => {
+            drop(buffer);
+            force_update(name).await
+        }
+        false => Ok(()),
+    }
+}
+
 pub async fn get_meta_by_uuid(name: &str, uuid: &str) -> Result<Arc<MetaData>> {
     let buffer = META_BUFFERS.get().unwrap().read().await;
     let buffer = buffer.get(name);
@@ -173,6 +187,7 @@ pub async fn list(name: &str, filter: Option<&str>) -> Result<Vec<Arc<MetaData>>
     let buffer = META_BUFFERS
         .get()
         .with_context(|| anyhow!("BUFFERS not set"))?;
+    let _ = update(name).await;
     let buffer = buffer.read().await;
     let buffer = buffer.get(name);
     if buffer.is_none() {
