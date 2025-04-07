@@ -111,7 +111,7 @@ async fn list(
     Json(list.iter().map(|v| v.as_ref().into()).collect())
 }
 
-#[get("/latest?<n>&<filter>")]
+#[get("/latest/<n>?<filter>")]
 async fn latest(data: TokenPayload, n: Option<usize>, filter: Option<&str>) -> FileContent {
     let n = n.unwrap_or(0);
     let mut list = agent::list(&data.name, filter).await.unwrap_or(Vec::new());

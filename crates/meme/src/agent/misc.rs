@@ -183,7 +183,6 @@ pub async fn get_meta_by_uuid(name: &str, uuid: &str) -> Result<Arc<MetaData>> {
 }
 
 pub async fn list(name: &str, filter: Option<&str>) -> Result<Vec<Arc<MetaData>>> {
-    let mut result = Vec::new();
     let buffer = META_BUFFERS
         .get()
         .with_context(|| anyhow!("BUFFERS not set"))?;
@@ -194,18 +193,32 @@ pub async fn list(name: &str, filter: Option<&str>) -> Result<Vec<Arc<MetaData>>
         return Err(anyhow!("{} not found", name));
     }
     let buffer = buffer.unwrap();
-    let buffer = buffer.iter();
-    let filter = split_tags(filter)
+    let mut result: Vec<Arc<MetaData>> = buffer.values().map(|v| v.clone()).collect();
+    let filters = split_tags(filter)
         .iter()
         .map(|s| s.to_ascii_lowercase())
         .collect::<Vec<_>>();
-    for (_, v) in buffer {
-        if filter.iter().all(|f| {
-            v.tags
-                .iter()
-                .any(|tag| tag.to_ascii_lowercase().contains(f))
-        }) {
-            result.push(v.clone());
+    for hide in HIDE.get().unwrap_or(&Vec::new()) {
+        if !filters.contains(hide) {
+            debug!("remove {}", hide);
+            result.retain(|v| {
+                v.tags
+                    .iter()
+                    .all(|s| !s.to_ascii_lowercase().contains(hide))
+            });
+        }
+    }
+    for filter in filters {
+        let key = filter.trim_start_matches(&['+', '-', ' ']);
+        match filter.chars().nth(0) {
+            Some('-') => {
+                debug!("remove {}", key);
+                result.retain(|v| v.tags.iter().all(|s| !s.to_ascii_lowercase().contains(key)));
+            }
+            _ => {
+                debug!("keep {}", key);
+                result.retain(|v| v.tags.iter().any(|s| s.to_ascii_lowercase().contains(key)));
+            }
         }
     }
     Ok(result)
@@ -277,7 +290,7 @@ pub async fn init(
     BUCKET.get_or_init(|| bucket);
     META_BUFFERS.get_or_init(|| RwLock::new(HashMap::new()));
 
-    HIDE.get_or_init(|| hide.iter().map(|s| s.to_ascii_lowercase()).collect());
+    HIDE.get_or_init(|| hide.iter().map(|s| s.trim().to_ascii_lowercase()).collect());
 
     super::validation::init(jwt_secret_key, key_salt, key_file).await?;
 
