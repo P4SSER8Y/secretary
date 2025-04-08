@@ -24,7 +24,9 @@ jobs:
       - name: Show artifacts
         run: tree ./
         working-directory: ./dist
-      - name: Upload artifact
+      - name: Package
+        run: tar -czvf secretary_${{matrix.target}}.tar.gz -C ./dist/ .
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: secretary_${{matrix.target}}
@@ -32,3 +34,10 @@ jobs:
           if-no-files-found: error
           compression-level: 9
           overwrite: false
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          make_latest: true
+          files: secretary_${{matrix.target}}.tar.gz
+          
