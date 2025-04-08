@@ -1,5 +1,5 @@
 use crate::{
-    agent::{self, get_content, MetaData, TokenPayload},
+    agent::{self, get_content, MetaData, RawImage, TokenPayload},
     data::{BriefMetaData, FileContent, ListInfo, UploadedImage},
 };
 use anyhow::anyhow;
@@ -187,8 +187,8 @@ async fn preview_thumbnail(data: Form<UploadedImage<'_>>) -> (ContentType, Vec<u
     let data = agent::generate_thumbnail(body).await;
     match data {
         Ok(data) => (
-            ContentType::parse_flexible(data.2).unwrap_or(ContentType::Any),
-            data.0,
+            ContentType::parse_flexible(data.mime_type).unwrap_or(ContentType::Any),
+            data.data,
         ),
         Err(_) => (
             ContentType::Text,
@@ -269,14 +269,18 @@ async fn upload(data: Form<UploadedImage<'_>>, token: TokenPayload) -> (Status, 
     let thumbnail = thumbnail.unwrap();
     let raw_format = agent::guess_image_mime_type(data.file)
         .await
-        .unwrap_or(("application/octet-stream", ""));
+        .unwrap_or(RawImage {
+            data: Vec::new(),
+            mime_type: "application/octet-stream",
+            extension: "",
+        });
     let tags = agent::split_tags(data.tags);
     let meta = MetaData {
         timestamp: chrono::Utc::now().to_rfc3339(),
-        content_type: raw_format.0.to_string(),
-        filename: format!("{}.{}", uuid, raw_format.1),
-        thumbnail_content_type: Some(thumbnail.2.to_string()),
-        thumbnail: format!("{}.{}", uuid, thumbnail.1),
+        content_type: raw_format.mime_type.to_string(),
+        filename: format!("{}.{}", uuid, raw_format.extension),
+        thumbnail_content_type: Some(thumbnail.mime_type.to_string()),
+        thumbnail: format!("{}.{}", uuid, thumbnail.extension),
         uuid: uuid.clone(),
         owner: token.name.to_string(),
         size: data.file.len(),
@@ -290,7 +294,7 @@ async fn upload(data: Form<UploadedImage<'_>>, token: TokenPayload) -> (Status, 
     let meta_raw = serde_yaml::to_string(&meta).unwrap();
     {
         let u_raw = agent::upload(&raw_key, data.file);
-        let u_thumbnail = agent::upload(&thumbnail_key, &thumbnail.0);
+        let u_thumbnail = agent::upload(&thumbnail_key, &thumbnail.data);
         let u_meta = agent::upload(&meta_key, meta_raw.as_bytes());
 
         let result = future::join_all(vec![u_raw, u_thumbnail, u_meta])

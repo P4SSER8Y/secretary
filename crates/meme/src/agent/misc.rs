@@ -1,5 +1,4 @@
 use anyhow::{anyhow, Context, Result};
-use image::{guess_format, ImageReader};
 #[allow(unused_imports)]
 use log::{debug, info};
 use rocket::{
@@ -11,11 +10,11 @@ use rocket::{
 };
 use s3::Bucket;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use std::{
     collections::{HashMap, HashSet},
     sync::OnceLock,
 };
-use std::{io::Cursor, sync::Arc};
 
 #[derive(Deserialize, Debug, Serialize, Clone)]
 #[serde(crate = "rocket::serde")]
@@ -239,36 +238,6 @@ pub async fn upload(key: &str, data: &[u8]) -> anyhow::Result<()> {
     bucket.put_object(key, data).await?;
     info!("finish upload {}", key);
     Ok(())
-}
-
-pub async fn generate_thumbnail(data: &[u8]) -> anyhow::Result<(Vec<u8>, &str, &str)> {
-    let format = image::ImageFormat::WebP;
-    let mut img = ImageReader::new(Cursor::new(data))
-        .with_guessed_format()?
-        .decode()?;
-    let nheight = (img.height() as f32 * 512.0 / img.width() as f32) as u32;
-    img = img.thumbnail(512, nheight);
-    let mut buf = Vec::new();
-    img.write_to(&mut Cursor::new(&mut buf), image::ImageFormat::WebP)?;
-    Ok((buf, format.extensions_str()[0], format.to_mime_type()))
-}
-
-#[allow(dead_code)]
-pub async fn compress(data: &[u8]) -> anyhow::Result<(Vec<u8>, &str)> {
-    let img = ImageReader::new(Cursor::new(data))
-        .with_guessed_format()?
-        .decode()?;
-    let mut buf = Vec::new();
-    img.write_to(&mut Cursor::new(&mut buf), image::ImageFormat::WebP)?;
-    Ok((buf, image::ImageFormat::WebP.to_mime_type()))
-}
-
-pub async fn guess_image_mime_type(data: &[u8]) -> anyhow::Result<(&str, &str)> {
-    let format = guess_format(data);
-    match format {
-        Ok(format) => Ok((format.to_mime_type(), format.extensions_str()[0])),
-        Err(_) => Ok(("application/octet-stream", "")),
-    }
 }
 
 pub async fn init(
