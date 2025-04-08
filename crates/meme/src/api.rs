@@ -1,9 +1,9 @@
 use crate::{
     agent::{self, get_content, MetaData, TokenPayload},
-    data::{BriefMetaData, FileContent, UploadedImage},
+    data::{BriefMetaData, FileContent, ListInfo, UploadedImage},
 };
 use anyhow::anyhow;
-#[allow(dead_code)]
+#[allow(unused_imports)]
 use log::{debug, info};
 use rand::Rng;
 use rocket::{
@@ -91,7 +91,7 @@ async fn list(
     asc: bool,
     s: Option<usize>,
     e: Option<usize>,
-) -> Json<Vec<BriefMetaData>> {
+) -> Json<ListInfo> {
     debug!(
         "filter={:?} sort={:?} asc={} range={:?}:{:?}",
         filter, sort, asc, s, e
@@ -116,7 +116,8 @@ async fn list(
         }
     }
     let list = list.iter().skip(s).take(e - s);
-    Json(list.map(|v| v.as_ref().into()).collect())
+    let list: Vec<_> = list.map(|v| v.as_ref().into()).collect();
+    Json(ListInfo { meta: list })
 }
 
 #[get("/latest/<n>?<filter>")]

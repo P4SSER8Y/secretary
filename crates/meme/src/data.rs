@@ -114,3 +114,8 @@ impl From<&MetaData> for BriefMetaData {
         }
     }
 }
+
+#[derive(Serialize, Debug)]
+pub struct ListInfo {
+    pub meta: Vec<BriefMetaData>,
+}
