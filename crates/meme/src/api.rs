@@ -270,6 +270,7 @@ async fn upload(data: Form<UploadedImage<'_>>, token: TokenPayload) -> (Status, 
     let raw_format = agent::guess_image_mime_type(data.file)
         .await
         .unwrap_or(("application/octet-stream", ""));
+    let tags = agent::split_tags(data.tags);
     let meta = MetaData {
         timestamp: chrono::Utc::now().to_rfc3339(),
         content_type: raw_format.0.to_string(),
@@ -279,10 +280,8 @@ async fn upload(data: Form<UploadedImage<'_>>, token: TokenPayload) -> (Status, 
         uuid: uuid.clone(),
         owner: token.name.to_string(),
         size: data.file.len(),
-        tags: agent::split_tags(data.tags)
-            .iter()
-            .map(|s| s.to_string())
-            .collect(),
+        tags: tags.iter().map(|v| v.to_string()).collect(),
+        lower_tags: tags.iter().map(|v| v.to_ascii_lowercase()).collect(),
     };
 
     let raw_key = format!("raw/{}/{}", meta.owner, meta.filename);

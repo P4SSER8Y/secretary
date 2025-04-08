@@ -31,6 +31,8 @@ pub struct MetaData {
     pub owner: String,
     pub size: usize,
     pub tags: Vec<String>,
+    #[serde(skip_serializing, skip_deserializing)]
+    pub lower_tags: Vec<String>,
 }
 
 impl PartialEq for MetaData {
@@ -59,6 +61,8 @@ pub fn split_tags(tags: Option<&str>) -> Vec<&str> {
         .split(&[',', '，', ';', '；'][..])
         .filter(|s| s.len() > 0)
         .map(|s| s.trim())
+        .collect::<HashSet<_>>()
+        .into_iter()
         .collect()
 }
 
@@ -91,7 +95,13 @@ async fn full_update(name: &str) -> Result<()> {
             log::error!("cannot parse {}", key);
             return Err(anyhow!("cannot parse {}", key));
         }
-        let result = insert(Arc::new(data.unwrap())).await?;
+        let mut meta = data.unwrap();
+        meta.lower_tags = meta
+            .tags
+            .iter()
+            .map(|t| t.trim().to_ascii_lowercase())
+            .collect();
+        let result = insert(Arc::new(meta)).await?;
         Ok(result)
     }
     info!("update buffer for {}", name);
@@ -198,14 +208,12 @@ pub async fn list(name: &str, filter: Option<&str>) -> Result<Vec<Arc<MetaData>>
         .iter()
         .map(|s| s.to_ascii_lowercase())
         .collect::<Vec<_>>();
+    debug!("{}", result.len());
     for hide in HIDE.get().unwrap_or(&Vec::new()) {
         if !filters.contains(hide) {
             debug!("remove {}", hide);
-            result.retain(|v| {
-                v.tags
-                    .iter()
-                    .all(|s| !s.to_ascii_lowercase().contains(hide))
-            });
+            result.retain(|v| v.lower_tags.iter().all(|s| !s.contains(hide)));
+            debug!("{}", result.len());
         }
     }
     for filter in filters {
@@ -213,13 +221,14 @@ pub async fn list(name: &str, filter: Option<&str>) -> Result<Vec<Arc<MetaData>>
         match filter.chars().nth(0) {
             Some('-') => {
                 debug!("remove {}", key);
-                result.retain(|v| v.tags.iter().all(|s| !s.to_ascii_lowercase().contains(key)));
+                result.retain(|v| v.lower_tags.iter().all(|s| !s.contains(key)));
             }
             _ => {
                 debug!("keep {}", key);
-                result.retain(|v| v.tags.iter().any(|s| s.to_ascii_lowercase().contains(key)));
+                result.retain(|v| v.lower_tags.iter().any(|s| s.contains(key)));
             }
         }
+        debug!("{}", result.len());
     }
     Ok(result)
 }
