@@ -74,6 +74,7 @@ pub async fn format_into_avif(src: Arc<MetaData>) -> Result<()> {
         if mime.unwrap_or("").to_ascii_lowercase() == "image/avif" {
             return Err(anyhow!("already avif"));
         }
+        info!("format {}", path);
         let raw = get_content(path).await?;
         let raw_len = raw.len();
         let ts = std::time::SystemTime::now();
@@ -89,47 +90,7 @@ pub async fn format_into_avif(src: Arc<MetaData>) -> Result<()> {
         );
         Ok(compressed)
     }
-
-    debug!("format {}", src.uuid);
-    let mut meta = MetaData::clone(&src);
-    let mut flag = false;
-    let thumbnail = wtf(
-        &format!("thumbnail/{}/{}", meta.owner, meta.thumbnail),
-        meta.thumbnail_content_type.as_deref(),
-    )
-    .await;
-    if let Ok(result) = thumbnail {
-        meta.thumbnail = format!("{}.{}", meta.uuid, result.extension);
-        meta.thumbnail_content_type = Some(result.mime_type.to_string());
-        let _ = upload(
-            &format!("thumbnail/{}/{}", meta.owner, meta.thumbnail),
-            &result.data,
-        )
-        .await?;
-        if meta.thumbnail != src.thumbnail {
-            remove(&format!("thumbnail/{}/{}", src.owner, src.thumbnail)).await?;
-        }
-        flag = true;
-    }
-    let raw = wtf(
-        &format!("raw/{}/{}", meta.owner, meta.filename),
-        Some(&meta.content_type),
-    )
-    .await;
-    if let Ok(result) = raw {
-        meta.filename = format!("{}.{}", meta.uuid, result.extension);
-        meta.content_type = result.mime_type.to_string();
-        let _ = upload(
-            &format!("raw/{}/{}", meta.owner, meta.filename),
-            &result.data,
-        )
-        .await?;
-        if meta.filename != src.filename {
-            remove(&format!("raw/{}/{}", src.owner, src.filename)).await?;
-        }
-        flag = true;
-    }
-    if flag {
+    async fn update_meta(meta: MetaData) -> Result<()> {
         let _ = upload(
             &format!("meta/{}/{}.yml", meta.owner, meta.uuid),
             serde_yaml::to_string(&meta)?.as_bytes(),
@@ -144,6 +105,45 @@ pub async fn format_into_avif(src: Arc<MetaData>) -> Result<()> {
             .get_mut(&meta.owner)
             .unwrap()
             .insert(meta.uuid.to_ascii_lowercase(), Arc::new(meta));
+        Ok(())
+    }
+
+    let mut meta = MetaData::clone(&src);
+    let thumbnail = wtf(
+        &format!("thumbnail/{}/{}", meta.owner, meta.thumbnail),
+        meta.thumbnail_content_type.as_deref(),
+    )
+    .await;
+    if let Ok(result) = thumbnail {
+        meta.thumbnail = format!("{}.{}", meta.uuid, result.extension);
+        meta.thumbnail_content_type = Some(result.mime_type.to_string());
+        let _ = upload(
+            &format!("thumbnail/{}/{}", meta.owner, meta.thumbnail),
+            &result.data,
+        )
+        .await?;
+        update_meta(meta.clone()).await?;
+        if meta.thumbnail != src.thumbnail {
+            remove(&format!("thumbnail/{}/{}", src.owner, src.thumbnail)).await?;
+        }
+    }
+    let raw = wtf(
+        &format!("raw/{}/{}", meta.owner, meta.filename),
+        Some(&meta.content_type),
+    )
+    .await;
+    if let Ok(result) = raw {
+        meta.filename = format!("{}.{}", meta.uuid, result.extension);
+        meta.content_type = result.mime_type.to_string();
+        let _ = upload(
+            &format!("raw/{}/{}", meta.owner, meta.filename),
+            &result.data,
+        )
+        .await?;
+        update_meta(meta.clone()).await?;
+        if meta.filename != src.filename {
+            remove(&format!("raw/{}/{}", src.owner, src.filename)).await?;
+        }
     }
     Ok(())
 }
