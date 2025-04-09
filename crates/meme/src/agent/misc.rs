@@ -89,7 +89,7 @@ pub async fn format_into_avif(src: Arc<MetaData>) -> Result<()> {
         );
         Ok(compressed)
     }
-    
+
     debug!("format {}", src.uuid);
     let mut meta = MetaData::clone(&src);
     let mut flag = false;
@@ -106,6 +106,9 @@ pub async fn format_into_avif(src: Arc<MetaData>) -> Result<()> {
             &result.data,
         )
         .await?;
+        if meta.thumbnail != src.thumbnail {
+            remove(&format!("thumbnail/{}/{}", src.owner, src.thumbnail)).await?;
+        }
         flag = true;
     }
     let raw = wtf(
@@ -121,6 +124,9 @@ pub async fn format_into_avif(src: Arc<MetaData>) -> Result<()> {
             &result.data,
         )
         .await?;
+        if meta.filename != src.filename {
+            remove(&format!("raw/{}/{}", src.owner, src.filename)).await?;
+        }
         flag = true;
     }
     if flag {
@@ -129,8 +135,6 @@ pub async fn format_into_avif(src: Arc<MetaData>) -> Result<()> {
             serde_yaml::to_string(&meta)?.as_bytes(),
         )
         .await?;
-        remove(&format!("raw/{}/{}", src.owner, src.filename)).await?;
-        remove(&format!("thumbnail/{}/{}", src.owner, src.thumbnail)).await?;
 
         let buffer = META_BUFFERS
             .get()
