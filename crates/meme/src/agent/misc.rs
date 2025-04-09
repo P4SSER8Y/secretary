@@ -1,6 +1,6 @@
 use anyhow::{anyhow, Context, Result};
 #[allow(unused_imports)]
-use log::{debug, info};
+use log::{debug, info, warn};
 use rocket::{
     futures::future::join_all,
     tokio::{
@@ -15,6 +15,10 @@ use std::{
     collections::{HashMap, HashSet},
     sync::OnceLock,
 };
+
+use crate::agent::RawImage;
+
+use super::img;
 
 #[derive(Deserialize, Debug, Serialize, Clone)]
 #[serde(crate = "rocket::serde")]
@@ -65,6 +69,81 @@ pub fn split_tags(tags: Option<&str>) -> Vec<&str> {
         .collect()
 }
 
+pub async fn format_into_avif(src: Arc<MetaData>) -> Result<()> {
+    async fn wtf(path: &str, mime: Option<&str>) -> Result<RawImage<'static>> {
+        if mime.unwrap_or("").to_ascii_lowercase() == "image/avif" {
+            return Err(anyhow!("already avif"));
+        }
+        let raw = get_content(path).await?;
+        let raw_len = raw.len();
+        let ts = std::time::SystemTime::now();
+        let compressed = tokio::task::spawn_blocking(move || img::convert_to_avif(&raw)).await??;
+        info!(
+            "compress {} rate:{:.2}%, cost: {}s",
+            path,
+            compressed.data.len() as f32 / raw_len as f32 * 100.0,
+            std::time::SystemTime::now()
+                .duration_since(ts)
+                .unwrap()
+                .as_secs_f32()
+        );
+        Ok(compressed)
+    }
+    
+    debug!("format {}", src.uuid);
+    let mut meta = MetaData::clone(&src);
+    let mut flag = false;
+    let thumbnail = wtf(
+        &format!("thumbnail/{}/{}", meta.owner, meta.thumbnail),
+        meta.thumbnail_content_type.as_deref(),
+    )
+    .await;
+    if let Ok(result) = thumbnail {
+        meta.thumbnail = format!("{}.{}", meta.uuid, result.extension);
+        meta.thumbnail_content_type = Some(result.mime_type.to_string());
+        let _ = upload(
+            &format!("thumbnail/{}/{}", meta.owner, meta.thumbnail),
+            &result.data,
+        )
+        .await?;
+        flag = true;
+    }
+    let raw = wtf(
+        &format!("raw/{}/{}", meta.owner, meta.filename),
+        Some(&meta.content_type),
+    )
+    .await;
+    if let Ok(result) = raw {
+        meta.filename = format!("{}.{}", meta.uuid, result.extension);
+        meta.content_type = result.mime_type.to_string();
+        let _ = upload(
+            &format!("raw/{}/{}", meta.owner, meta.filename),
+            &result.data,
+        )
+        .await?;
+        flag = true;
+    }
+    if flag {
+        let _ = upload(
+            &format!("meta/{}/{}.yml", meta.owner, meta.uuid),
+            serde_yaml::to_string(&meta)?.as_bytes(),
+        )
+        .await?;
+        remove(&format!("raw/{}/{}", src.owner, src.filename)).await?;
+        remove(&format!("thumbnail/{}/{}", src.owner, src.thumbnail)).await?;
+
+        let buffer = META_BUFFERS
+            .get()
+            .with_context(|| anyhow!("META_BUFFERS not set"))?;
+        let mut buffer = buffer.write().await;
+        buffer
+            .get_mut(&meta.owner)
+            .unwrap()
+            .insert(meta.uuid.to_ascii_lowercase(), Arc::new(meta));
+    }
+    Ok(())
+}
+
 pub async fn insert(meta: Arc<MetaData>) -> Result<usize> {
     let buffer = META_BUFFERS
         .get()
@@ -77,6 +156,7 @@ pub async fn insert(meta: Arc<MetaData>) -> Result<usize> {
         list.insert(meta.uuid.clone(), meta.clone());
         buffer.insert(meta.owner.to_string(), list);
     }
+    tokio::spawn(format_into_avif(meta.clone()));
     Ok(buffer.get(&meta.owner).unwrap().len())
 }
 
@@ -87,7 +167,7 @@ pub async fn get_content(path: &str) -> Result<Vec<u8>> {
 }
 
 async fn full_update(name: &str) -> Result<()> {
-    async fn update_one(bucket: &Box<Bucket>, key: String) -> Result<usize> {
+    async fn update_one(bucket: &Box<Bucket>, key: String, name: &str) -> Result<usize> {
         let data = bucket.get_object(key.clone()).await?;
         let data = serde_yaml::from_slice::<MetaData>(data.as_slice());
         if data.is_err() {
@@ -95,6 +175,7 @@ async fn full_update(name: &str) -> Result<()> {
             return Err(anyhow!("cannot parse {}", key));
         }
         let mut meta = data.unwrap();
+        meta.owner = name.to_string();
         meta.lower_tags = meta
             .tags
             .iter()
@@ -109,7 +190,7 @@ async fn full_update(name: &str) -> Result<()> {
     let mut results = Vec::new();
     for list in list {
         for object in list.contents {
-            results.push(update_one(bucket, object.key));
+            results.push(update_one(bucket, object.key, name));
         }
     }
     let todo_result = join_all(results).await;
@@ -237,6 +318,13 @@ pub async fn upload(key: &str, data: &[u8]) -> anyhow::Result<()> {
     let bucket = BUCKET.get().with_context(|| anyhow!("BUCKET not set"))?;
     bucket.put_object(key, data).await?;
     info!("finish upload {}", key);
+    Ok(())
+}
+
+pub async fn remove(key: &str) -> anyhow::Result<()> {
+    warn!("remove {}", key);
+    let bucket = BUCKET.get().with_context(|| anyhow!("BUCKET not set"))?;
+    bucket.delete_object(key).await?;
     Ok(())
 }
 

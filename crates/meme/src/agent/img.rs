@@ -52,3 +52,17 @@ pub async fn generate_thumbnail(data: &[u8]) -> anyhow::Result<RawImage> {
         extension: FORMAT.extensions_str()[0],
     })
 }
+
+pub fn convert_to_avif(data: &[u8]) -> anyhow::Result<RawImage<'static>> {
+    const FORMAT: ImageFormat = ImageFormat::Avif;
+    let img = ImageReader::new(Cursor::new(data))
+        .with_guessed_format()?
+        .decode()?;
+    let mut output = Vec::new();
+    img.write_to(&mut Cursor::new(&mut output), FORMAT)?;
+    Ok(RawImage {
+        data: output,
+        mime_type: FORMAT.to_mime_type(),
+        extension: FORMAT.extensions_str()[0],
+    })
+}
