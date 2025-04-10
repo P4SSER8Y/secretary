@@ -302,10 +302,14 @@ async fn upload(data: Form<UploadedImage<'_>>, token: TokenPayload) -> (Status, 
             .iter()
             .all(|r| r.is_ok());
         if result {
-            let _ = agent::insert(Arc::new(meta.clone())).await;
+            let brief = BriefMetaData::from(&meta);
+            let meta = Arc::new(meta);
+            #[cfg(feature="avif")]
+            tokio::spawn(agent::format_into_avif(meta.clone()));
+            let _ = agent::insert(meta.clone()).await;
             (
                 Status::Ok,
-                serde_json::to_string(&BriefMetaData::from(&meta)).unwrap(),
+                serde_json::to_string(&brief).unwrap(),
             )
         } else {
             (Status::InternalServerError, "upload failed".to_string())

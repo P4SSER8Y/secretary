@@ -69,6 +69,7 @@ pub fn split_tags(tags: Option<&str>) -> Vec<&str> {
         .collect()
 }
 
+#[cfg(feature="avif")]
 pub async fn format_into_avif(src: Arc<MetaData>) -> Result<()> {
     async fn wtf(path: &str, mime: Option<&str>) -> Result<RawImage<'static>> {
         if mime.unwrap_or("").to_ascii_lowercase() == "image/avif" {
@@ -160,7 +161,6 @@ pub async fn insert(meta: Arc<MetaData>) -> Result<usize> {
         list.insert(meta.uuid.clone(), meta.clone());
         buffer.insert(meta.owner.to_string(), list);
     }
-    tokio::spawn(format_into_avif(meta.clone()));
     Ok(buffer.get(&meta.owner).unwrap().len())
 }
 
@@ -188,6 +188,19 @@ async fn full_update(name: &str) -> Result<()> {
         let result = insert(Arc::new(meta)).await?;
         Ok(result)
     }
+    #[cfg(feature="avif")]
+    async fn format_all(name: String) -> Result<()> {
+        let buffer = META_BUFFERS
+            .get()
+            .with_context(|| anyhow!("META_BUFFERS not set"))?;
+        let buffer = buffer.read().await;
+        let data = buffer.get(&name).unwrap().clone();
+        drop(buffer);
+        for (_, item) in data {
+            let _ = format_into_avif(item).await;
+        }
+        Ok(())
+    }
     info!("update buffer for {}", name);
     let bucket = BUCKET.get().with_context(|| anyhow!("BUCKET not set"))?;
     let list = bucket.list(format!("meta/{}", name), None).await?;
@@ -203,6 +216,8 @@ async fn full_update(name: &str) -> Result<()> {
         .any(|item| item.is_ok() && item.unwrap() > 0)
     {
         info!("finish update buffer for {}", name);
+        #[cfg(feature="avif")]
+        tokio::spawn(format_all(name.to_string()));
         Ok(())
     } else {
         Err(anyhow!("no such name: {}", name))
