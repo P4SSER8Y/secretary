@@ -16,10 +16,6 @@ use std::{
     sync::OnceLock,
 };
 
-use crate::agent::RawImage;
-
-use super::img;
-
 #[derive(Deserialize, Debug, Serialize, Clone)]
 #[serde(crate = "rocket::serde")]
 pub struct MetaData {
@@ -69,7 +65,7 @@ pub fn split_tags(tags: Option<&str>) -> Vec<&str> {
         .collect()
 }
 
-#[cfg(feature="avif")]
+#[cfg(feature = "avif")]
 pub async fn format_into_avif(src: Arc<MetaData>) -> Result<()> {
     async fn wtf(path: &str, mime: Option<&str>) -> Result<RawImage<'static>> {
         if mime.unwrap_or("").to_ascii_lowercase() == "image/avif" {
@@ -188,7 +184,7 @@ async fn full_update(name: &str) -> Result<()> {
         let result = insert(Arc::new(meta)).await?;
         Ok(result)
     }
-    #[cfg(feature="avif")]
+    #[cfg(feature = "avif")]
     async fn format_all(name: String) -> Result<()> {
         let buffer = META_BUFFERS
             .get()
@@ -216,7 +212,7 @@ async fn full_update(name: &str) -> Result<()> {
         .any(|item| item.is_ok() && item.unwrap() > 0)
     {
         info!("finish update buffer for {}", name);
-        #[cfg(feature="avif")]
+        #[cfg(feature = "avif")]
         tokio::spawn(format_all(name.to_string()));
         Ok(())
     } else {
@@ -340,6 +336,7 @@ pub async fn upload(key: &str, data: &[u8]) -> anyhow::Result<()> {
     Ok(())
 }
 
+#[allow(unused)]
 pub async fn remove(key: &str) -> anyhow::Result<()> {
     warn!("remove {}", key);
     let bucket = BUCKET.get().with_context(|| anyhow!("BUCKET not set"))?;

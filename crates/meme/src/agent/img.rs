@@ -53,6 +53,7 @@ pub async fn generate_thumbnail(data: &[u8]) -> anyhow::Result<RawImage> {
     })
 }
 
+#[cfg(feature="avif")]
 pub fn convert_to_avif(data: &[u8]) -> anyhow::Result<RawImage<'static>> {
     const FORMAT: ImageFormat = ImageFormat::Avif;
     let img = ImageReader::new(Cursor::new(data))
