@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use chrono::Local;
 use clap::{Parser, Subcommand};
 use log::{info, warn};
@@ -134,18 +136,32 @@ async fn go(config: &Figment) -> Result<(), rocket::Error> {
     Ok(())
 }
 
+fn iter_load_config(file: &str) -> Figment {
+    let mut config = Figment::new();
+    let mut set = HashSet::new();
+    let mut file = file.to_string();
+    while !set.contains(&file) {
+        println!("Load and merge {}", file);
+        set.insert(file.clone());
+        config = config.merge(Toml::file(&file).nested()).select(PROFILE);
+        let local = config.find_value("local");
+        if local.is_err() {
+            break;
+        }
+        let local = local.unwrap();
+        if let Some(path) = local.as_str() {
+            file = path.to_string();
+            continue;
+        }
+        break;
+    }
+    config
+}
+
 /// 42
 #[rocket::main]
 async fn main() -> Result<(), rocket::Error> {
-    let mut config = Figment::new()
-        .merge(Toml::file("Rocket.toml").nested())
-        .select(PROFILE);
-    if let Ok(local) = config.find_value("local") {
-        if let Some(path) = local.as_str() {
-            config = config.merge(Toml::file(path).nested()).select(PROFILE);
-        }
-    }
-
+    let config = iter_load_config("Rocket.toml");
     let level = config
         .find_value("level")
         .ok()

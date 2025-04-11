@@ -1,6 +1,7 @@
 /target
 *.otf
-/Local.toml
+/*.toml
+!Rocket.toml
 /data
 /dist
 meme_key.yaml
