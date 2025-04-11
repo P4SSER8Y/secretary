@@ -118,9 +118,7 @@ async fn go(config: &Figment) -> Result<(), rocket::Error> {
         wtf = inbox::build("/inbox/api/", wtf, &config).await.unwrap();
     }
     if let Ok(ui) = config.find_value("ui_path") {
-        info!("{:#?}", ui);
         if let Some(ui) = ui.as_str() {
-            info!("{:#?}", ui);
             use rocket::fs::{FileServer, Options};
             let options = Options::Index | Options::NormalizeDirs;
             wtf = wtf.mount("/", FileServer::new(ui, options).rank(999))

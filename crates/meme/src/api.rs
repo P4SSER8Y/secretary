@@ -15,10 +15,21 @@ use rocket::{
     response::{status::NotFound, Redirect},
     routes,
     serde::json::Json,
-    tokio::{self},
+    tokio::{self, sync::RwLock},
     Build, Rocket,
 };
-use std::sync::{Arc, OnceLock};
+use std::{
+    collections::HashMap,
+    sync::{Arc, OnceLock},
+    time::{Duration, SystemTime},
+};
+use uuid::Uuid;
+
+struct ToDeleteRecord {
+    ts: SystemTime,
+    meta: Arc<MetaData>,
+}
+static TO_DELETE_BUFFER: OnceLock<RwLock<HashMap<String, ToDeleteRecord>>> = OnceLock::new();
 
 static HOST: OnceLock<String> = OnceLock::new();
 static GATE: OnceLock<String> = OnceLock::new();
@@ -304,16 +315,60 @@ async fn upload(data: Form<UploadedImage<'_>>, token: TokenPayload) -> (Status, 
         if result {
             let brief = BriefMetaData::from(&meta);
             let meta = Arc::new(meta);
-            #[cfg(feature="avif")]
+            #[cfg(feature = "avif")]
             tokio::spawn(agent::format_into_avif(meta.clone()));
             let _ = agent::insert(meta.clone()).await;
-            (
-                Status::Ok,
-                serde_json::to_string(&brief).unwrap(),
-            )
+            (Status::Ok, serde_json::to_string(&brief).unwrap())
         } else {
             (Status::InternalServerError, "upload failed".to_string())
         }
+    }
+}
+
+#[get("/delete?<id>&<code>")]
+pub async fn delete_item(
+    id: Option<&str>,
+    code: Option<&str>,
+    token: TokenPayload,
+) -> (Status, String) {
+    async fn request(id: &str, token: TokenPayload) -> (Status, String) {
+        let uuid = id.trim().to_ascii_lowercase();
+        if let Ok(meta) = agent::get_meta_by_uuid(&token.name, &uuid).await {
+            let code = Uuid::new_v4().to_string();
+            let mut map = TO_DELETE_BUFFER.get().unwrap().write().await;
+            map.insert(
+                code.clone(),
+                ToDeleteRecord {
+                    ts: SystemTime::now(),
+                    meta: meta,
+                },
+            );
+            (Status::Ok, code)
+        } else {
+            (Status::NotFound, "not found".to_string())
+        }
+    }
+    async fn confirm(code: &str, token: TokenPayload) -> (Status, String) {
+        let code = code.trim().to_ascii_lowercase();
+        let record = TO_DELETE_BUFFER.get().unwrap().write().await.remove(&code);
+        let earlist_ts = SystemTime::now() - Duration::from_secs(60);
+        if let Some(record) = record {
+            if record.meta.owner == token.name {
+                if record.ts >= earlist_ts {
+                    if agent::remove_meta(record.meta.clone()).await.is_ok() {
+                        return (Status::Ok, format!("{}, goodbye!", record.meta.uuid));
+                    }
+                }
+            }
+        }
+        (Status::BadRequest, "invalid code".to_owned())
+    }
+    if let Some(id) = id {
+        request(id, token).await
+    } else if let Some(code) = code {
+        confirm(code, token).await
+    } else {
+        (Status::BadRequest, "WTF".to_owned())
     }
 }
 
@@ -326,6 +381,7 @@ pub async fn build(
     HOST.get_or_init(move || host.to_string());
     GATE.get_or_init(move || gate.to_string());
     BASE.get_or_init(|| base.to_string());
+    TO_DELETE_BUFFER.get_or_init(|| RwLock::new(HashMap::new()));
 
     #[cfg(debug_assertions)]
     let build = build.mount(base, routes![preview_thumbnail]);
@@ -343,6 +399,7 @@ pub async fn build(
             get_raw,
             get_thumbnail,
             latest,
+            delete_item,
         ],
     ))
 }

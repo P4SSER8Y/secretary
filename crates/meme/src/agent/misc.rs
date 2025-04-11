@@ -336,11 +336,30 @@ pub async fn upload(key: &str, data: &[u8]) -> anyhow::Result<()> {
     Ok(())
 }
 
-#[allow(unused)]
 pub async fn remove(key: &str) -> anyhow::Result<()> {
     warn!("remove {}", key);
     let bucket = BUCKET.get().with_context(|| anyhow!("BUCKET not set"))?;
     bucket.delete_object(key).await?;
+    Ok(())
+}
+
+pub async fn remove_meta(meta: Arc<MetaData>) -> anyhow::Result<()> {
+    warn!("remove meta {}", meta.uuid);
+    let mut buffer = META_BUFFERS
+        .get()
+        .with_context(|| anyhow!("META_BUFFERS not set"))?
+        .write()
+        .await;
+    if let Some(map) = buffer.get_mut(&meta.owner) {
+        map.remove(&meta.uuid);
+    }
+    let keys = vec![
+        format!("meta/{}/{}.yml", meta.owner, meta.uuid),
+        format!("raw/{}/{}", meta.owner, meta.filename),
+        format!("thumbnail/{}/{}", meta.owner, meta.thumbnail),
+    ];
+    join_all(keys.iter().map(|key| remove(key))).await;
+
     Ok(())
 }
 
