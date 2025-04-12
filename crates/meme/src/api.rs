@@ -72,6 +72,7 @@ async fn login() -> Redirect {
     let callback = url::Url::parse(host).unwrap();
     let callback = callback.join(BASE.get().unwrap()).unwrap();
     let callback = callback.join("check").unwrap();
+    debug!("redirect to {}", callback);
 
     let gate = url::Url::parse_with_params(
         GATE.get().unwrap(),
@@ -380,13 +381,17 @@ pub async fn build(
 ) -> anyhow::Result<Rocket<Build>> {
     HOST.get_or_init(move || host.to_string());
     GATE.get_or_init(move || gate.to_string());
-    BASE.get_or_init(|| base.to_string());
     TO_DELETE_BUFFER.get_or_init(|| RwLock::new(HashMap::new()));
 
+    let base = regex::Regex::new(r"/{2,}")
+        .unwrap()
+        .replace_all(&format!("{}/i/", base), "/")
+        .to_string();
+    BASE.get_or_init(|| base.clone());
     #[cfg(debug_assertions)]
-    let build = build.mount(base, routes![preview_thumbnail]);
+    let build = build.mount(&base, routes![preview_thumbnail]);
     Ok(build.mount(
-        base,
+        &base,
         routes![
             check,
             check_with_token,

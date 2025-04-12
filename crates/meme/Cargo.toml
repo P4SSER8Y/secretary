@@ -37,3 +37,4 @@ image = { version = "0.25.6", features = [
     "webp",
 ] }
 rust-crypto = "0.2.36"
+regex = "1.11.1"
