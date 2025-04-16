@@ -55,3 +55,5 @@ jwt_gate = ""
 hide = []
 key_salt = ""
 key_file = "meme_key.yaml"
+eink_album_width = 800
+eink_album_height = 480

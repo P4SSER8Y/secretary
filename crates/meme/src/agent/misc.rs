@@ -1,4 +1,5 @@
 use anyhow::{anyhow, Context, Result};
+use figment::Figment;
 #[allow(unused_imports)]
 use log::{debug, info, warn};
 use rocket::{
@@ -161,6 +162,7 @@ pub async fn insert(meta: Arc<MetaData>) -> Result<usize> {
 }
 
 pub async fn get_content(path: &str) -> Result<Vec<u8>> {
+    debug!("fetch {}", path);
     let bucket = BUCKET.get().with_context(|| anyhow!("BUCKET not set"))?;
     let data = bucket.get_object(path).await?;
     Ok(data.to_vec())
@@ -363,17 +365,57 @@ pub async fn remove_meta(meta: Arc<MetaData>) -> anyhow::Result<()> {
     Ok(())
 }
 
-pub async fn init(
-    endpoint: &str,
-    region: &str,
-    bucket: &str,
-    access_key: &str,
-    secret_key: &str,
-    jwt_secret_key: &str,
-    hide: &Vec<&str>,
-    key_salt: &str,
-    key_file: &str,
-) -> anyhow::Result<()> {
+pub async fn init(config: &Figment) -> anyhow::Result<()> {
+    let endpoint = config
+        .find_value("meme.endpoint")?
+        .as_str()
+        .ok_or(anyhow!("endpoint not found"))?
+        .to_owned();
+    let region = config
+        .find_value("meme.region")?
+        .as_str()
+        .ok_or(anyhow!("region not found"))?
+        .to_owned();
+    let bucket = config
+        .find_value("meme.bucket")?
+        .as_str()
+        .ok_or(anyhow!("bucket not found"))?
+        .to_owned();
+
+    let access_key = config
+        .find_value("meme.access_key")?
+        .as_str()
+        .ok_or(anyhow!("access_key not found"))?
+        .to_owned();
+    let secret_key = config
+        .find_value("meme.secret_key")?
+        .as_str()
+        .ok_or(anyhow!("secret_key not found"))?
+        .to_owned();
+    let jwt_secret_key = config
+        .find_value("meme.jwt_secret_key")?
+        .as_str()
+        .ok_or(anyhow!("jwt_secret_key not found"))?
+        .to_owned();
+    let hide = config.find_value("meme.hide")?;
+    let hide: Vec<_> = hide
+        .as_array()
+        .ok_or(anyhow!("hide not found"))?
+        .iter()
+        .map(|item| item.as_str())
+        .filter(|item| item.is_some() && item.unwrap().len() > 0)
+        .map(|item| item.unwrap())
+        .collect();
+    let key_file = config
+        .find_value("meme.key_file")?
+        .as_str()
+        .ok_or(anyhow!("key_file not found"))?
+        .to_owned();
+    let key_salt = config
+        .find_value("meme.key_salt")?
+        .as_str()
+        .ok_or(anyhow!("key_salt not found"))?
+        .to_owned();
     let region = s3::Region::Custom {
         region: region.to_string(),
         endpoint: endpoint.to_string(),
@@ -387,13 +429,13 @@ pub async fn init(
         expiration: None,
     };
 
-    let bucket = Bucket::new(bucket, region, credentials)?.with_path_style();
+    let bucket = Bucket::new(&bucket, region, credentials)?.with_path_style();
     BUCKET.get_or_init(|| bucket);
     META_BUFFERS.get_or_init(|| RwLock::new(HashMap::new()));
 
     HIDE.get_or_init(|| hide.iter().map(|s| s.trim().to_ascii_lowercase()).collect());
 
-    super::validation::init(jwt_secret_key, key_salt, key_file).await?;
+    super::validation::init(&jwt_secret_key, &key_salt, &key_file).await?;
 
     return Ok(());
 }

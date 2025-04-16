@@ -2,7 +2,7 @@ use crate::{
     agent::{self, get_content, MetaData, RawImage, TokenPayload},
     data::{BriefMetaData, FileContent, ListInfo, UploadedImage},
 };
-use anyhow::anyhow;
+use anyhow::{anyhow, Context};
 #[allow(unused_imports)]
 use log::{debug, info};
 use rand::Rng;
@@ -34,6 +34,8 @@ static TO_DELETE_BUFFER: OnceLock<RwLock<HashMap<String, ToDeleteRecord>>> = Onc
 static HOST: OnceLock<String> = OnceLock::new();
 static GATE: OnceLock<String> = OnceLock::new();
 static BASE: OnceLock<String> = OnceLock::new();
+static EALBUM_WIDTH: OnceLock<u32> = OnceLock::new();
+static EALBUM_HEIGHT: OnceLock<u32> = OnceLock::new();
 
 #[get("/check?<token>")]
 async fn check_with_token(
@@ -373,12 +375,112 @@ pub async fn delete_item(
     }
 }
 
+#[get("/dither?<filter>&<preview>")]
+async fn dither_random(data: TokenPayload, filter: Option<&str>, preview: bool) -> FileContent {
+    let w = EALBUM_WIDTH.get().unwrap();
+    let h = EALBUM_HEIGHT.get().unwrap();
+    let list = agent::list(&data.name, filter).await;
+    let mut list = list.unwrap_or(Vec::new());
+    while list.len() > 0 {
+        let idx = rand::rng().random_range(0..list.len());
+        let item = list.remove(idx);
+        let data =
+            agent::get_content(&format!("{}/{}/{}", "raw", item.owner, item.filename)).await;
+        if let Ok(data) = data {
+            let result = agent::dither(&data, &item.content_type, *w, *h, preview);
+            if let Ok(result) = result {
+                return FileContent {
+                    content_type: result.mime_type.to_string(),
+                    name: "dither".to_string(),
+                    body: Ok(result.data),
+                };
+            } else {
+                debug!(
+                    "failed to dither {}, mime={}, error={:?}",
+                    item.uuid,
+                    item.content_type,
+                    result.err().unwrap()
+                );
+            }
+        } else {
+            debug!("failed to get {}, mime={}", item.uuid, item.content_type);
+        }
+    }
+    return FileContent {
+        content_type: "text/plain".to_string(),
+        name: "".to_owned(),
+        body: Err(anyhow!("WTF")),
+    };
+}
+
+#[get("/dither/<uuid>?<preview>")]
+async fn dither_uuid(data: TokenPayload, uuid: &str, preview: bool) -> FileContent {
+    let w = EALBUM_WIDTH.get().unwrap();
+    let h = EALBUM_HEIGHT.get().unwrap();
+    let item = agent::get_meta_by_uuid(&data.name, uuid).await;
+    if item.is_err() {
+        return FileContent {
+            content_type: "text/plain".to_string(),
+            name: "".to_owned(),
+            body: Err(anyhow!("{} not found", uuid)),
+        };
+    }
+    let item = item.unwrap();
+    let data = agent::get_content(&format!("{}/{}/{}", "raw", item.owner, item.filename)).await;
+    if let Ok(data) = data {
+        let result = agent::dither(&data, &item.content_type, *w, *h, preview);
+        if let Ok(result) = result {
+            return FileContent {
+                content_type: result.mime_type.to_string(),
+                name: "dither".to_string(),
+                body: Ok(result.data),
+            };
+        } else {
+            debug!(
+                "failed to dither {}, mime={}, error={:?}",
+                item.uuid,
+                item.content_type,
+                result.err().unwrap()
+            );
+        }
+    } else {
+        debug!("failed to get {}, mime={}", item.uuid, item.content_type);
+    }
+    FileContent {
+        content_type: "text/plain".to_string(),
+        name: "".to_owned(),
+        body: Err(anyhow!("{} dithering failed", uuid)),
+    }
+}
+
 pub async fn build(
     build: Rocket<Build>,
-    host: &str,
-    gate: &str,
     base: &str,
+    config: &figment::Figment,
 ) -> anyhow::Result<Rocket<Build>> {
+    let host = config
+        .find_value("host")?
+        .as_str()
+        .ok_or(anyhow!("host not found"))?
+        .to_owned();
+    let gate = config
+        .find_value("meme.jwt_gate")?
+        .as_str()
+        .ok_or(anyhow!("meme.jwt_gate not found"))?
+        .to_owned();
+    let w = config
+        .find_value("meme.eink_album_width")
+        .with_context(|| anyhow!("meme.eink_album_width not found"))?
+        .to_num()
+        .ok_or(anyhow!("meme.eink_album_width not a number"))?;
+    let h = config
+        .find_value("meme.eink_album_height")
+        .with_context(|| anyhow!("meme.eink_album_width not found"))?
+        .to_num()
+        .ok_or(anyhow!("meme.eink_album_height not a number"))?;
+    
+    EALBUM_WIDTH.get_or_init(|| w.to_i128().unwrap() as u32);
+    EALBUM_HEIGHT.get_or_init(|| h.to_i128().unwrap() as u32);
     HOST.get_or_init(move || host.to_string());
     GATE.get_or_init(move || gate.to_string());
     TO_DELETE_BUFFER.get_or_init(|| RwLock::new(HashMap::new()));
@@ -405,6 +507,8 @@ pub async fn build(
             get_thumbnail,
             latest,
             delete_item,
+            dither_random,
+            dither_uuid,
         ],
     ))
 }
