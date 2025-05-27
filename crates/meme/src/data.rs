@@ -70,18 +70,26 @@ pub struct FileContent {
     pub content_type: String,
     pub name: String,
     pub body: anyhow::Result<Vec<u8>>,
+    pub chunk: Option<usize>,
 }
 
 impl<'r, 'o: 'r> Responder<'r, 'o> for FileContent {
     fn respond_to(self, _request: &'r Request<'_>) -> response::Result<'o> {
         if let Ok(body) = self.body {
-            Ok(Response::build()
+            let mut builder = Response::build();
+            builder
                 .status(Status::Ok)
                 .raw_header("Content-Type", self.content_type.to_string())
                 .raw_header("Content-Length", body.len().to_string())
-                .raw_header("Content-Disposition", format!("inline; filename={}", self.name))
-                .sized_body(body.len(), Cursor::new(body))
-                .finalize())
+                .raw_header(
+                    "Content-Disposition",
+                    format!("inline; filename={}", self.name),
+                )
+                .streamed_body(Cursor::new(body));
+            if let Some(chunk) = self.chunk {
+                builder.max_chunk_size(chunk);
+            }
+            Ok(builder.finalize())
         } else {
             let body = "Not Found".to_string();
             Ok(Response::build()

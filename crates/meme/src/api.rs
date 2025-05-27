@@ -22,6 +22,7 @@ use std::{
     collections::HashMap,
     sync::{Arc, OnceLock},
     time::{Duration, SystemTime},
+    usize,
 };
 use uuid::Uuid;
 
@@ -145,11 +146,13 @@ async fn latest(data: TokenPayload, n: Option<usize>, filter: Option<&str>) -> F
             content_type: meta.content_type.to_string(),
             name: meta.filename.to_owned(),
             body: get_content(&format!("raw/{}/{}", meta.owner, meta.filename)).await,
+            chunk: None,
         },
         None => FileContent {
             content_type: "text/plain".to_string(),
             name: "".to_owned(),
             body: Err(anyhow!("not found")),
+            chunk: None,
         },
     }
 }
@@ -163,6 +166,7 @@ async fn random(data: TokenPayload, t: bool, filter: Option<&str>) -> FileConten
             content_type: "text/plain".to_string(),
             name: "".to_owned(),
             body: Err(anyhow!("WTF")),
+            chunk: None,
         };
     }
     let idx = rand::rng().random_range(0..list.len());
@@ -180,6 +184,7 @@ async fn random(data: TokenPayload, t: bool, filter: Option<&str>) -> FileConten
             },
             name: item.thumbnail.clone(),
             body: data,
+            chunk: None,
         }
     } else {
         let data = agent::get_content(&format!("{}/{}/{}", "raw", item.owner, item.filename)).await;
@@ -187,6 +192,7 @@ async fn random(data: TokenPayload, t: bool, filter: Option<&str>) -> FileConten
             content_type: item.content_type.clone(),
             name: item.filename.clone(),
             body: data,
+            chunk: None,
         }
     }
 }
@@ -219,6 +225,7 @@ async fn get_raw(uuid: &str, token: TokenPayload) -> FileContent {
             content_type: "text/plain".to_owned(),
             name: "".to_string(),
             body: Err(meta.err().unwrap()),
+            chunk: None,
         };
     }
     let meta = meta.unwrap();
@@ -228,6 +235,7 @@ async fn get_raw(uuid: &str, token: TokenPayload) -> FileContent {
             content_type: "text/plain".to_owned(),
             name: "".to_owned(),
             body: data,
+            chunk: None,
         };
     }
     let data = data.unwrap();
@@ -235,6 +243,7 @@ async fn get_raw(uuid: &str, token: TokenPayload) -> FileContent {
         content_type: meta.content_type.to_owned(),
         name: meta.filename.to_owned(),
         body: Ok(data),
+        chunk: None,
     }
 }
 
@@ -246,6 +255,7 @@ async fn get_thumbnail(uuid: &str, token: TokenPayload) -> FileContent {
             content_type: "text/plain".to_owned(),
             name: "".to_owned(),
             body: Err(meta.err().unwrap()),
+            chunk: None,
         };
     }
     let meta = meta.unwrap();
@@ -255,6 +265,7 @@ async fn get_thumbnail(uuid: &str, token: TokenPayload) -> FileContent {
             content_type: "text/plain".to_owned(),
             name: "".to_owned(),
             body: data,
+            chunk: None,
         };
     }
     let data = data.unwrap();
@@ -266,6 +277,7 @@ async fn get_thumbnail(uuid: &str, token: TokenPayload) -> FileContent {
         content_type: content_type,
         name: meta.thumbnail.clone(),
         body: Ok(data),
+        chunk: None,
     }
 }
 
@@ -375,6 +387,8 @@ pub async fn delete_item(
     }
 }
 
+static DITHER_BUFFER: OnceLock<RwLock<HashMap<String, Vec<u8>>>> = OnceLock::new();
+
 #[get("/dither?<filter>&<preview>")]
 async fn dither_random(data: TokenPayload, filter: Option<&str>, preview: bool) -> FileContent {
     let w = EALBUM_WIDTH.get().unwrap();
@@ -384,15 +398,17 @@ async fn dither_random(data: TokenPayload, filter: Option<&str>, preview: bool) 
     while list.len() > 0 {
         let idx = rand::rng().random_range(0..list.len());
         let item = list.remove(idx);
-        let data =
-            agent::get_content(&format!("{}/{}/{}", "raw", item.owner, item.filename)).await;
+        let data = agent::get_content(&format!("{}/{}/{}", "raw", item.owner, item.filename)).await;
         if let Ok(data) = data {
             let result = agent::dither(&data, &item.content_type, *w, *h, preview);
             if let Ok(result) = result {
+                let buffer = DITHER_BUFFER.get_or_init(|| RwLock::new(HashMap::new()));
+                buffer.write().await.insert(item.owner.clone(), result.data.clone());
                 return FileContent {
                     content_type: result.mime_type.to_string(),
                     name: "dither".to_string(),
-                    body: Ok(result.data),
+                    body: Ok("Ok".as_bytes().to_vec()),
+                    chunk: Some(512),
                 };
             } else {
                 debug!(
@@ -410,46 +426,80 @@ async fn dither_random(data: TokenPayload, filter: Option<&str>, preview: bool) 
         content_type: "text/plain".to_string(),
         name: "".to_owned(),
         body: Err(anyhow!("WTF")),
+        chunk: None,
     };
 }
 
-#[get("/dither/<uuid>?<preview>")]
-async fn dither_uuid(data: TokenPayload, uuid: &str, preview: bool) -> FileContent {
-    let w = EALBUM_WIDTH.get().unwrap();
-    let h = EALBUM_HEIGHT.get().unwrap();
-    let item = agent::get_meta_by_uuid(&data.name, uuid).await;
-    if item.is_err() {
-        return FileContent {
-            content_type: "text/plain".to_string(),
-            name: "".to_owned(),
-            body: Err(anyhow!("{} not found", uuid)),
-        };
-    }
-    let item = item.unwrap();
-    let data = agent::get_content(&format!("{}/{}/{}", "raw", item.owner, item.filename)).await;
-    if let Ok(data) = data {
-        let result = agent::dither(&data, &item.content_type, *w, *h, preview);
-        if let Ok(result) = result {
-            return FileContent {
-                content_type: result.mime_type.to_string(),
-                name: "dither".to_string(),
-                body: Ok(result.data),
-            };
-        } else {
-            debug!(
-                "failed to dither {}, mime={}, error={:?}",
-                item.uuid,
-                item.content_type,
-                result.err().unwrap()
+#[get("/dither/<uuid>?<preview>&<since>&<size>")]
+async fn dither_uuid(
+    data: TokenPayload,
+    uuid: &str,
+    preview: bool,
+    since: Option<usize>,
+    size: Option<usize>,
+) -> FileContent {
+    let buffer = BUFFER.get_or_init(|| RwLock::new(HashMap::new()));
+    let mut result: Option<Vec<u8>> = None;
+
+    if let Some(prv) = buffer.read().await.get(uuid) {
+        if prv.0.owner == data.name {
+            result = Some(
+                prv.1
+                    .iter()
+                    .skip(since.unwrap_or(0))
+                    .take(size.unwrap_or(usize::MAX))
+                    .copied()
+                    .collect(),
             );
         }
-    } else {
-        debug!("failed to get {}, mime={}", item.uuid, item.content_type);
     }
-    FileContent {
-        content_type: "text/plain".to_string(),
-        name: "".to_owned(),
-        body: Err(anyhow!("{} dithering failed", uuid)),
+    if result.is_none() {
+        let w = EALBUM_WIDTH.get().unwrap();
+        let h = EALBUM_HEIGHT.get().unwrap();
+        let meta = agent::get_meta_by_uuid(&data.name, uuid).await;
+        if let Ok(meta) = meta {
+            let data =
+                agent::get_content(&format!("{}/{}/{}", "raw", meta.owner, meta.filename)).await;
+            if let Ok(data) = data {
+                let content_type = meta.content_type.clone();
+                let dithered = tokio::task::spawn_blocking(move || {
+                    agent::dither(&data, &content_type, *w, *h, preview)
+                })
+                .await;
+                if let Ok(dithered) = dithered {
+                    if let Ok(dithered) = dithered {
+                        buffer
+                            .write()
+                            .await
+                            .insert(uuid.to_string(), (meta.clone(), dithered.data.clone()));
+                        result = Some(
+                            dithered
+                                .data
+                                .iter()
+                                .skip(since.unwrap_or(0))
+                                .take(size.unwrap_or(usize::MAX))
+                                .copied()
+                                .collect(),
+                        );
+                    }
+                }
+            }
+        }
+    }
+    if let Some(result) = result {
+        FileContent {
+            content_type: "application/octat-stream".to_owned(),
+            name: uuid.to_owned(),
+            body: Ok(result),
+            chunk: None,
+        }
+    } else {
+        FileContent {
+            content_type: "text/plain".to_string(),
+            name: "".to_owned(),
+            body: Err(anyhow!("{} dithering failed", uuid)),
+            chunk: None,
+        }
     }
 }
 
@@ -478,7 +528,7 @@ pub async fn build(
         .with_context(|| anyhow!("meme.eink_album_width not found"))?
         .to_num()
         .ok_or(anyhow!("meme.eink_album_height not a number"))?;
-    
+
     EALBUM_WIDTH.get_or_init(|| w.to_i128().unwrap() as u32);
     EALBUM_HEIGHT.get_or_init(|| h.to_i128().unwrap() as u32);
     HOST.get_or_init(move || host.to_string());
