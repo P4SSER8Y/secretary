@@ -13,6 +13,7 @@ export default defineConfig({
       input: {
         inbox: resolve(__dirname, 'inbox/index.html'),
         kindle: resolve(__dirname, 'kindle/debug/index.html'),
+        meme: resolve(__dirname, 'meme/index.html'),
       }
     }
   },
@@ -26,6 +27,11 @@ export default defineConfig({
     proxy: {
       '^/inbox/api': {
         target: 'http://192.168.31.41:8000',
+        changeOrigin: true,
+      },
+      '^/meme/i': {
+        target: 'https://s.32323235.xyz',
+        secure: false,
         changeOrigin: true,
       }
     }

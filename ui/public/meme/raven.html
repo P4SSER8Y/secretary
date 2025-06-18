@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Raven</title>
+  </head>
+  <body style="background-color: black">
+    <p id="m" style="color: white"></p>
+    <script>
+      var p = document.getElementById("m");
+      var url = new URL(window.location.href);
+      var token = url.searchParams.get("token");
+      if (token) {
+        console.log("update token to " + token);
+        localStorage.setItem("token", token);
+        window.close();
+        p.innerText = "token saved, you may close me";
+      } else {
+        console.log("call Hodor");
+        var gate = url.searchParams.get("gate");
+        if (gate) {
+          var dest = new URL(gate);
+          dest.searchParams.set("c", url.href);
+          dest.searchParams.set("f", url.searchParams.get("family"));
+          window.location.assign(dest.href);
+        } else {
+          p.innerText = "gate not defined";
+          console.log("gate not defined");
+        }
+      }
+    </script>
+  </body>
+</html>
