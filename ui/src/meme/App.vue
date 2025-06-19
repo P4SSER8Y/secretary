@@ -72,7 +72,7 @@ watch(filter, update);
 </script>
 
 <template>
-    <div class="navbar bg-base-100">
+    <div class="fixed navbar bg-base-100 z-50 opacity-0 hover:opacity-90 rounded-3xl">
         <div class="flex-1 min-w-0">
             <input type="text" placeholder="" class="input input-ghost w-full" v-model="filter" />
         </div>
