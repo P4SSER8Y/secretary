@@ -15,6 +15,9 @@ function next() {
         if (index.value < props.data.meta.length - 1) {
             index.value++;
         }
+        else {
+            index.value = 0;
+        }
     }
     else {
         index.value = 0;
@@ -25,6 +28,9 @@ function previous() {
     if (props.data) {
         if (index.value > 0) {
             index.value--;
+        }
+        else {
+            index.value = props.data.meta.length - 1;
         }
     }
     else {
