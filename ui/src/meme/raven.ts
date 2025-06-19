@@ -14,7 +14,17 @@ async function raven(gate?: string, timeout: number = Infinity): Promise<string>
     let url = new URL('raven.html', window.location.href);
     url.searchParams.set('gate', gate);
     url.searchParams.set('family', 'meme');
-    let win = window.open(url.href, '_blank', 'menubar=no,toolbar=no,location=yes');
+
+    const width = 300;
+    const height = 400;
+    const left = (screen.width - width) / 2;
+    const top = (screen.height - height) / 2;
+
+    let win = window.open(
+        url.href,
+        '_blank',
+        `menubar=no,toolbar=no,location=no,scrollbars=no,resizable=no,width=${width},height=${height},left=${left},top=${top}`
+    );
     if (!win) throw Error("Raven doesn't known where to fly");
 
     timeout = timeout + now();

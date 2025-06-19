@@ -2,6 +2,7 @@
 
 import { getCurrentInstance, onMounted, Ref, ref, watch } from 'vue';
 import Waterfall from './pages/Waterfall.vue'
+import Gallery from './pages/Gallery.vue';
 import { raven } from "./raven"
 import { MemeList } from './lib/struct';
 import { debounce } from 'lodash';
@@ -12,6 +13,12 @@ let name: Ref<string | null> = ref(null);
 let data: Ref<MemeList | null> = ref(null);
 let filter: Ref<string> = ref("");
 let waterfall_pagnition: Ref<number> = ref(30);
+
+enum Mode {
+    Waterfall,
+    Gallery,
+};
+let mode: Ref<Mode> = ref(Mode.Waterfall);
 
 const update = debounce(
     async function update() {
@@ -27,6 +34,12 @@ const update = debounce(
     },
     500
 );
+
+async function logout() {
+    filter.value = "";
+    token.value = null;
+    data.value = null;
+}
 
 onMounted(() => {
     if (localStorage.getItem('token')?.length ?? 0 > 0) {
@@ -60,37 +73,66 @@ watch(filter, update);
 
 <template>
     <div class="navbar bg-base-100">
-        <div class="flex-none">
-            <a class="btn btn-ghost text-xl">meme</a>
-        </div>
         <div class="flex-1 min-w-0">
-            <input type="text" placeholder="filter" class="input input-ghost w-full" v-model="filter" />
+            <input type="text" placeholder="" class="input input-ghost w-full" v-model="filter" />
         </div>
         <div class="flex-none gap-2">
             <div class="dropdown dropdown-end">
                 <div tabindex="0" role="button" class="btn btn-ghost">
-                    <div class="w-10">
-                        {{ name ?? "WTF" }}
+                    <div class="w-2">
+                        ↓
                     </div>
                 </div>
                 <ul tabindex="0"
                     class="menu menu-sm dropdown-content bg-base-100 rounded-box z-[1] mt-3 w-52 p-2 shadow">
-                    <li v-if="token"><a @click="() => { token = null }">Logout</a></li>
-                    <li v-else><a
-                            @click="() => { raven('https://hodor.32323235.xyz/').then((res) => token = res) }">Login</a>
+                    <li>
+                        <span>user</span>
+                        <ul>
+                            <li>
+                                <a>{{ name }}</a>
+                            </li>
+                            <li v-if="token"><a @click="logout">logout</a></li>
+                            <li v-else><a
+                                    @click="() => { raven('https://hodor.32323235.xyz/').then((res) => token = res) }">Login</a>
+                            </li>
+                        </ul>
                     </li>
                     <li>
-                        <div>
-                            <input type="range" class="range range-xs" min="10" max="50" step="5"
-                                v-model.number="waterfall_pagnition" />
-                            <div>{{ waterfall_pagnition }}</div>
-                        </div>
+                        <span>mode</span>
+                        <ul>
+                            <li>
+                                <div @click="() => mode = Mode.Waterfall">
+                                    <input type="radio" class="radio" :checked="mode == Mode.Waterfall" />
+                                    <span>waterfall</span>
+                                </div>
+                            </li>
+                            <li class="flex">
+                                <div class="flex" @click="() => mode = Mode.Gallery">
+                                    <input type="radio" class="radio" :checked="mode == Mode.Gallery" />
+                                    <span>gallery</span>
+                                </div>
+                            </li>
+                        </ul>
+                    </li>
+                    <li v-if="mode == Mode.Waterfall">
+                        <span>range</span>
+                        <ul>
+                            <li>
+                                <div>
+                                    <input type="range" class="range range-xs" min="10" max="50" step="5"
+                                        v-model.number="waterfall_pagnition" />
+                                    <div>{{ waterfall_pagnition }}</div>
+                                </div>
+                            </li>
+                        </ul>
                     </li>
                 </ul>
             </div>
         </div>
     </div>
-    <Waterfall class="main-entry-container" :data="data" :pagnition="waterfall_pagnition"></Waterfall>
+    <Waterfall v-if="mode == Mode.Waterfall" class="main-entry-container" :data="data" :pagnition="waterfall_pagnition">
+    </Waterfall>
+    <Gallery v-else-if="mode == Mode.Gallery" class="main-entry-container" :data="data"></Gallery>
 </template>
 
 <style scoped lang="postcss"></style>

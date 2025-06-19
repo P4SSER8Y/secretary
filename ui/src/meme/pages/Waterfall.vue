@@ -32,14 +32,14 @@ function previous() {
 
 <template>
     <div class="box min-h-screen">
-        <div v-for="item in props.data?.meta.slice(min_idx, min_idx + props.pagnition)" :key="item.uuid" class="item">
+        <div v-for="item in props.data?.meta.slice(min_idx, min_idx + props.pagnition)" :key="item.uuid" class="item mx-auto">
             <div class="tooltip tooltip-bottom tooltip-info" :data-tip="item.tags?.join('/') ?? 'wtf'">
-                <img :src="'i/thumbnail/' + item.uuid">
+                <img :src="'i/thumbnail/' + item.uuid" class="rounded-xl">
                 </img>
             </div>
         </div>
     </div>
-    <div class="join fixed bottom-4 left-1/2 transform -translate-x-1/2">
+    <div class="join fixed bottom-4 left-1/2 transform -translate-x-1/2 opacity-0 hover:opacity-80">
         <button class="join-item btn" @click="previous">
             &lt;&lt;&lt;
         </button>

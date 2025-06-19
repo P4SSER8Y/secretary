@@ -14,7 +14,8 @@
     "dayjs": "^1.11.10",
     "lodash": "^4.17.21",
     "p5-ui": "^0.1.10",
-    "vue": "^3.3.11"
+    "vue": "^3.3.11",
+    "vue-router": "^4.5.1"
   },
   "devDependencies": {
     "@types/lodash": "^4.17.18",
