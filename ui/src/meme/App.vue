@@ -93,8 +93,9 @@ watch(filter, update);
                             </li>
                             <li v-if="token"><a @click="logout">logout</a></li>
                             <li v-else><a
-                                    @click="() => { raven('https://hodor.32323235.xyz/').then((res) => token = res) }">Login</a>
+                                    @click="() => { raven('https://hodor.32323235.xyz/').then((res) => token = res) }">login</a>
                             </li>
+                            <li v-if="token"><a @click="update">update</a></li>
                         </ul>
                     </li>
                     <li>
