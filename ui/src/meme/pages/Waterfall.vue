@@ -56,21 +56,23 @@ function previous() {
 </script>
 
 <template>
-    <wc-waterfall :cols="cols">
-        <div v-for="item in props.data?.meta.slice(min_idx, min_idx + waterfall_pagnition)" :key="item.uuid" class="mx-auto">
-            <div
-                class="tooltip tooltip-bottom tooltip-info gap-1 m-1"
-                :data-tip="item.tags?.join('/') ?? 'wtf'"
-                @click="() => $emit('show', item)"
-            >
-                <img :src="'i/thumbnail/' + item.uuid" class="rounded-xl" />
+    <div class="h-dvh w-dvw overflow-auto">
+        <wc-waterfall :cols="cols">
+            <div v-for="item in props.data?.meta.slice(min_idx, min_idx + waterfall_pagnition)" :key="item.uuid" class="mx-auto">
+                <div
+                        class="tooltip tooltip-bottom tooltip-info gap-1 m-1"
+                        :data-tip="item.tags?.join('/') ?? 'wtf'"
+                        @click="() => $emit('show', item)"
+                        >
+                        <img :src="'i/thumbnail/' + item.uuid" class="rounded-xl" />
+                </div>
             </div>
+        </wc-waterfall>
+        <div class="join fixed bottom-4 left-1/2 transform -translate-x-1/2 opacity-0 hover:opacity-80">
+            <button class="join-item btn" @click="previous">&lt;&lt;&lt;</button>
+            <button class="join-item btn">{{ min_idx + 1 }} ··· {{ min_idx + waterfall_pagnition }}</button>
+            <button class="join-item btn" @click="next">&gt;&gt;&gt;</button>
         </div>
-    </wc-waterfall>
-    <div class="join fixed bottom-4 left-1/2 transform -translate-x-1/2 opacity-0 hover:opacity-80">
-        <button class="join-item btn" @click="previous">&lt;&lt;&lt;</button>
-        <button class="join-item btn">{{ min_idx + 1 }} ··· {{ min_idx + waterfall_pagnition }}</button>
-        <button class="join-item btn" @click="next">&gt;&gt;&gt;</button>
     </div>
 </template>
 
