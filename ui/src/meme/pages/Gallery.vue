@@ -64,7 +64,7 @@ watch(() => props.data, random);
     </div>
     <div class="join fixed bottom-4 left-1/2 transform -translate-x-1/2 opacity-0 hover:opacity-80">
         <button class="join-item btn" @click="previous">&lt;&lt;&lt;</button>
-        <button class="join-item btn" @click="random">🎲</button>
+        <button class="join-item btn text-3xl" @click="random">⚄</button>
         <button class="join-item btn" @click="next">&gt;&gt;&gt;</button>
     </div>
 </template>
