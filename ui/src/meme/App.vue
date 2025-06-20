@@ -8,6 +8,7 @@ import { debounce } from 'lodash';
 import { useConfigStore } from './lib/configStore';
 import { storeToRefs } from 'pinia';
 import Upload from './pages/Upload.vue';
+import FullScreenPreview from './pages/FullScreenPreview.vue';
 
 const config = useConfigStore();
 const { page: page, waterfall_pagnition } = storeToRefs(config);
@@ -18,6 +19,7 @@ let data: Ref<MemeList | null> = ref(null);
 let filter: Ref<string> = ref('');
 let is_asc: Ref<boolean> = ref(false);
 let sort = ref(SortKey.timestamp);
+let single_preview: Ref<Meta | null> = ref(null);
 
 const update = debounce(async function update() {
     if (!token.value) {
@@ -41,8 +43,14 @@ async function logout() {
     data.value = null;
 }
 
+function show(meta: Meta) {
+    single_preview.value = meta;
+}
+
 function uploaded(meta: Meta) {
-    console.log(`uploaded ${meta.uuid} with tags: ${meta.tags}`)
+    update();
+    console.log(`uploaded ${meta.uuid} with tags: ${meta.tags}`);
+    show(meta);
 }
 
 onMounted(() => {
@@ -180,9 +188,10 @@ watch([filter, is_asc, sort], update);
             ⊙
         </div>
     </div>
-    <Waterfall v-if="token && page == PageType.Waterfall" class="main-entry-container" :data="data"> </Waterfall>
+    <Waterfall v-if="token && page == PageType.Waterfall" class="main-entry-container" :data="data" @show="show"> </Waterfall>
     <Gallery v-else-if="token && page == PageType.Gallery" class="main-entry-container" :data="data"></Gallery>
-    <Upload v-if="token" @done="uploaded"></Upload>
+    <Upload v-if="token && !single_preview" @done="uploaded"></Upload>
+    <FullScreenPreview v-if="token && single_preview" :meta="single_preview" @end="() => (single_preview = null)"></FullScreenPreview>
 </template>
 
 <style scoped lang="postcss"></style>

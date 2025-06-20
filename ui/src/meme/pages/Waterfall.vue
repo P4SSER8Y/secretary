@@ -5,12 +5,14 @@ import { storeToRefs } from 'pinia';
 import { useConfigStore } from '../lib/configStore';
 import 'wc-waterfall';
 import { useWindowSize } from '@vueuse/core';
+import { Meta } from '../lib/struct';
 
 const window = useWindowSize();
 
 const props = defineProps<{
     data: MemeList | null;
 }>();
+const emits = defineEmits<{ show: [meta: Meta] }>();
 const config = useConfigStore();
 const { waterfall_pagnition } = storeToRefs(config);
 
@@ -56,7 +58,11 @@ function previous() {
 <template>
     <wc-waterfall :cols="cols">
         <div v-for="item in props.data?.meta.slice(min_idx, min_idx + waterfall_pagnition)" :key="item.uuid" class="mx-auto">
-            <div class="tooltip tooltip-bottom tooltip-info gap-1 m-1" :data-tip="item.tags?.join('/') ?? 'wtf'">
+            <div
+                class="tooltip tooltip-bottom tooltip-info gap-1 m-1"
+                :data-tip="item.tags?.join('/') ?? 'wtf'"
+                @click="() => $emit('show', item)"
+            >
                 <img :src="'i/thumbnail/' + item.uuid" class="rounded-xl" />
             </div>
         </div>
