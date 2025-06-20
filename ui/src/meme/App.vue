@@ -3,7 +3,7 @@ import { getCurrentInstance, onMounted, Ref, ref, watch } from 'vue';
 import Waterfall from './pages/Waterfall.vue';
 import Gallery from './pages/Gallery.vue';
 import { raven } from './raven';
-import { MemeList, Meta, PageType as PageType, SortKey } from './lib/struct';
+import { ApiListParams, MemeList, Meta, PageType as PageType, SortKey } from './lib/struct';
 import { debounce } from 'lodash';
 import { useConfigStore } from './lib/configStore';
 import { storeToRefs } from 'pinia';
@@ -19,6 +19,7 @@ let data: Ref<MemeList | null> = ref(null);
 let filter: Ref<string> = ref('');
 let is_asc: Ref<boolean> = ref(false);
 let sort = ref(SortKey.timestamp);
+let is_randomized = ref(true);
 let single_preview: Ref<Meta | null> = ref(null);
 
 const update = debounce(async function update() {
@@ -26,12 +27,31 @@ const update = debounce(async function update() {
         data.value = null;
         return;
     }
+    let params: ApiListParams = {};
+    if (filter.value.length > 0) {
+        params.filter = filter.value;
+    }
+    if (!is_randomized.value) {
+        params.asc = is_asc.value;
+        params.sort = sort.value;
+    }
     try {
         let res = await api?.get('list', {
             headers: { token: token.value },
-            params: { filter: filter.value, asc: is_asc.value, sort: `${sort.value}` },
+            params: params,
         });
-        data.value = res?.data;
+        if (is_randomized.value) {
+            let temp = res?.data as MemeList | null;
+            if (temp) {
+                for (let i = temp.meta.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [temp.meta[i], temp.meta[j]] = [temp.meta[j], temp.meta[i]];
+                }
+            }
+            data.value = temp;
+        } else {
+            data.value = res?.data as MemeList | null;
+        }
     } catch {
         data.value = null;
     }
@@ -78,7 +98,7 @@ watch(token, (newVal) => {
     }
 });
 
-watch([filter, is_asc, sort], update);
+watch([filter, is_asc, sort, is_randomized], update);
 </script>
 
 <template>
@@ -108,12 +128,15 @@ watch([filter, is_asc, sort], update);
                             <span>general</span>
                             <ul>
                                 <li>
+                                    <div class="flex"><input type="checkbox" class="toggle" v-model="is_randomized" /> random</div>
+                                </li>
+                                <li v-if="!is_randomized">
                                     <div class="flex" @click="() => (is_asc = !is_asc)">
                                         <span>order</span>
                                         <span>{{ is_asc ? '↑' : '↓' }}</span>
                                     </div>
                                 </li>
-                                <li>
+                                <li v-if="!is_randomized">
                                     <details>
                                         <summary>sort by {{ sort }}</summary>
                                         <ul>

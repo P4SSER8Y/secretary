@@ -17,3 +17,9 @@ export enum SortKey {
     timestamp = 'ts',
     uuid = 'uuid',
 }
+
+export interface ApiListParams {
+    filter?: string;
+    asc?: boolean;
+    sort?: SortKey;
+}
