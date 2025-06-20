@@ -1,20 +1,42 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue';
-import { MemeList } from '../lib/struct'
+import { computed, ref, watch } from 'vue';
+import { MemeList } from '../lib/struct';
 import { storeToRefs } from 'pinia';
 import { useConfigStore } from '../lib/configStore';
+import 'wc-waterfall';
+import { useWindowSize } from '@vueuse/core';
+
+const window = useWindowSize();
 
 const props = defineProps<{
-    data: MemeList | null,
+    data: MemeList | null;
 }>();
 const config = useConfigStore();
 const { waterfall_pagnition } = storeToRefs(config);
 
 let min_idx = ref(0);
-
-watch(() => props.data, () => {
-    min_idx.value = 0;
+let cols = computed(() => {
+    if (window.width.value < 640) {
+        return 2;
+    } else if (window.width.value < 768) {
+        return 3;
+    } else if (window.width.value < 1024) {
+        return 4;
+    } else if (window.width.value < 1280) {
+        return 5;
+    } else if (window.width.value < 1536) {
+        return 6;
+    } else {
+        return 7;
+    }
 });
+
+watch(
+    () => props.data,
+    () => {
+        min_idx.value = 0;
+    }
+);
 
 function next() {
     if ((props.data?.meta.length ?? 0) > min_idx.value + waterfall_pagnition.value) {
@@ -25,46 +47,24 @@ function next() {
 function previous() {
     if (min_idx.value >= waterfall_pagnition.value) {
         min_idx.value -= waterfall_pagnition.value;
-    }
-    else {
+    } else {
         min_idx.value = 0;
     }
 }
 </script>
 
 <template>
-    <div class="box min-h-screen">
-        <div v-for="item in props.data?.meta.slice(min_idx, min_idx + waterfall_pagnition)" :key="item.uuid"
-            class="item mx-auto">
-            <div class="tooltip tooltip-bottom tooltip-info" :data-tip="item.tags?.join('/') ?? 'wtf'">
-                <img :src="'i/thumbnail/' + item.uuid" class="rounded-xl">
-                </img>
+    <wc-waterfall :cols="cols">
+        <div v-for="item in props.data?.meta.slice(min_idx, min_idx + waterfall_pagnition)" :key="item.uuid" class="mx-auto">
+            <div class="tooltip tooltip-bottom tooltip-info gap-1 m-1" :data-tip="item.tags?.join('/') ?? 'wtf'">
+                <img :src="'i/thumbnail/' + item.uuid" class="rounded-xl" />
             </div>
         </div>
-    </div>
+    </wc-waterfall>
     <div class="join fixed bottom-4 left-1/2 transform -translate-x-1/2 opacity-0 hover:opacity-80">
-        <button class="join-item btn" @click="previous">
-            &lt;&lt;&lt;
-        </button>
-        <button class="join-item btn" @click="next">
-            &gt;&gt;&gt;
-        </button>
+        <button class="join-item btn" @click="previous">&lt;&lt;&lt;</button>
+        <button class="join-item btn" @click="next">&gt;&gt;&gt;</button>
     </div>
 </template>
 
-<style lang="postcss" scoped>
-.box {
-    margin: 10px;
-    column-count: 4;
-    column-gap: 10px;
-}
-
-.item {
-    margin-bottom: 10px;
-}
-
-.item img {
-    width: 100%;
-    height: 100%;
-}
-</style>
+<style lang="postcss" scoped></style>

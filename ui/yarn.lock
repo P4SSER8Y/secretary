@@ -1472,6 +1472,11 @@ vue@^3.2.37, vue@^3.3.11:
     "@vue/server-renderer" "3.4.15"
     "@vue/shared" "3.4.15"
 
+wc-waterfall@^0.1.3:
+  version "0.1.3"
+  resolved "https://registry.npmmirror.com/wc-waterfall/-/wc-waterfall-0.1.3.tgz#633bc06af3466390973a968cee9417da5f4a9878"
+  integrity sha512-zJQLFGSSueI+hVAwBXaSKWS/juOFQ50nmfDK5F7GbVjxGJIOm+LJH76tghBvB1BFxG45+MBfZpL+MSDgnNKX0Q==
+
 which@^2.0.1:
   version "2.0.2"
   resolved "https://registry.npmmirror.com/which/-/which-2.0.2.tgz"
