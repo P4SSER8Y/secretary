@@ -3,10 +3,11 @@ import { getCurrentInstance, onMounted, Ref, ref, watch } from 'vue';
 import Waterfall from './pages/Waterfall.vue';
 import Gallery from './pages/Gallery.vue';
 import { raven } from './raven';
-import { MemeList, PageType as PageType, SortKey } from './lib/struct';
+import { MemeList, Meta, PageType as PageType, SortKey } from './lib/struct';
 import { debounce } from 'lodash';
 import { useConfigStore } from './lib/configStore';
 import { storeToRefs } from 'pinia';
+import Upload from './pages/Upload.vue';
 
 const config = useConfigStore();
 const { page: page, waterfall_pagnition } = storeToRefs(config);
@@ -38,6 +39,10 @@ async function logout() {
     filter.value = '';
     token.value = null;
     data.value = null;
+}
+
+function uploaded(meta: Meta) {
+    console.log(`uploaded ${meta.uuid} with tags: ${meta.tags}`)
 }
 
 onMounted(() => {
@@ -177,6 +182,7 @@ watch([filter, is_asc, sort], update);
     </div>
     <Waterfall v-if="token && page == PageType.Waterfall" class="main-entry-container" :data="data"> </Waterfall>
     <Gallery v-else-if="token && page == PageType.Gallery" class="main-entry-container" :data="data"></Gallery>
+    <Upload v-if="token" @done="uploaded"></Upload>
 </template>
 
 <style scoped lang="postcss"></style>

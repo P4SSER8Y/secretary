@@ -1,4 +1,4 @@
-interface Meta {
+export interface Meta {
     uuid: string;
     timestamp?: string;
     tags?: string[];
