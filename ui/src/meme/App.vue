@@ -4,21 +4,18 @@ import { getCurrentInstance, onMounted, Ref, ref, watch } from 'vue';
 import Waterfall from './pages/Waterfall.vue'
 import Gallery from './pages/Gallery.vue';
 import { raven } from "./raven"
-import { MemeList } from './lib/struct';
+import { MemeList, Mode } from './lib/struct';
 import { debounce } from 'lodash';
+import { useConfigStore } from './lib/configStore';
+import { storeToRefs } from 'pinia';
 
+const config = useConfigStore();
 const api = getCurrentInstance()?.appContext.config.globalProperties.$api;
 let token: Ref<string | null> = ref(null);
 let name: Ref<string | null> = ref(null);
 let data: Ref<MemeList | null> = ref(null);
 let filter: Ref<string> = ref("");
-let waterfall_pagnition: Ref<number> = ref(30);
-
-enum Mode {
-    Waterfall,
-    Gallery,
-};
-let mode: Ref<Mode> = ref(Mode.Waterfall);
+const { mode, waterfall_pagnition } = storeToRefs(config);
 
 const update = debounce(
     async function update() {
@@ -124,7 +121,8 @@ watch(filter, update);
                 </li>
             </ul>
         </div>
-        <div v-else class="btn btn-ghost" @click="() => { raven('https://hodor.32323235.xyz/').then((res) => token = res) }">⊙</div>
+        <div v-else class="btn btn-ghost"
+            @click="() => { raven('https://hodor.32323235.xyz/').then((res) => token = res) }">⊙</div>
     </div>
     <Waterfall v-if="token && mode == Mode.Waterfall" class="main-entry-container" :data="data"
         :pagnition="waterfall_pagnition">

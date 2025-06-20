@@ -7,3 +7,8 @@ interface Meta {
 export interface MemeList {
     meta: Meta[];
 }
+
+export enum Mode {
+    Waterfall,
+    Gallery,
+};
