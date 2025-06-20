@@ -1,10 +1,10 @@
 import { useLocalStorage } from '@vueuse/core';
 import { defineStore } from 'pinia';
-import { Mode } from './struct';
+import { PageType } from './struct';
 
 export const useConfigStore = defineStore('config', {
     state: () => ({
-        mode: useLocalStorage('mode', Mode.Waterfall),
+        page: useLocalStorage('page', PageType.Waterfall),
         waterfall_pagnition: useLocalStorage('wf_pagnition', 30),
     }),
 });

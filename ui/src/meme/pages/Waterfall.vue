@@ -1,12 +1,14 @@
 <script setup lang="ts">
-
 import { ref, watch } from 'vue';
 import { MemeList } from '../lib/struct'
+import { storeToRefs } from 'pinia';
+import { useConfigStore } from '../lib/configStore';
 
 const props = defineProps<{
     data: MemeList | null,
-    pagnition: number,
 }>();
+const config = useConfigStore();
+const { waterfall_pagnition } = storeToRefs(config);
 
 let min_idx = ref(0);
 
@@ -15,14 +17,14 @@ watch(() => props.data, () => {
 });
 
 function next() {
-    if ((props.data?.meta.length ?? 0) > min_idx.value + props.pagnition) {
-        min_idx.value = min_idx.value + props.pagnition;
+    if ((props.data?.meta.length ?? 0) > min_idx.value + waterfall_pagnition.value) {
+        min_idx.value = min_idx.value + waterfall_pagnition.value;
     }
 }
 
 function previous() {
-    if (min_idx.value >= props.pagnition) {
-        min_idx.value -= props.pagnition;
+    if (min_idx.value >= waterfall_pagnition.value) {
+        min_idx.value -= waterfall_pagnition.value;
     }
     else {
         min_idx.value = 0;
@@ -32,7 +34,8 @@ function previous() {
 
 <template>
     <div class="box min-h-screen">
-        <div v-for="item in props.data?.meta.slice(min_idx, min_idx + props.pagnition)" :key="item.uuid" class="item mx-auto">
+        <div v-for="item in props.data?.meta.slice(min_idx, min_idx + waterfall_pagnition)" :key="item.uuid"
+            class="item mx-auto">
             <div class="tooltip tooltip-bottom tooltip-info" :data-tip="item.tags?.join('/') ?? 'wtf'">
                 <img :src="'i/thumbnail/' + item.uuid" class="rounded-xl">
                 </img>
