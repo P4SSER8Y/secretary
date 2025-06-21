@@ -9,6 +9,7 @@ import { useConfigStore } from './lib/configStore';
 import { storeToRefs } from 'pinia';
 import Upload from './pages/Upload.vue';
 import FullScreenPreview from './pages/FullScreenPreview.vue';
+import TagCloud from './pages/TagCloud.vue';
 
 const config = useConfigStore();
 const { page, waterfall_pagnition } = storeToRefs(config);
@@ -23,6 +24,7 @@ let is_asc: Ref<boolean> = ref(false);
 let sort = ref(SortKey.timestamp);
 let is_randomized = ref(true);
 let single_preview: Ref<Meta | null> = ref(null);
+let is_tag_cloud_shown = ref(false);
 
 const update = debounce(async function update() {
     if (!token.value) {
@@ -87,9 +89,9 @@ function check_token() {
     }
 }
 
-onMounted(() => {
-    document.cookie = '';
-});
+function commit_filter(data: string) {
+    filter.value = data;
+}
 
 watch(token, (newVal) => {
     if (newVal) {
@@ -105,6 +107,14 @@ watch(token, (newVal) => {
 });
 
 watch([filter, is_asc, sort, is_randomized], update);
+
+onMounted(() => {
+    token.value =
+        document.cookie
+            .split(';')
+            .find((c) => c.trim().startsWith('token='))
+            ?.split('=')[1] ?? null;
+});
 </script>
 
 <template>
@@ -183,6 +193,11 @@ watch([filter, is_asc, sort, is_randomized], update);
                                         <span>gallery</span>
                                     </div>
                                 </li>
+                                <li>
+                                    <div class="flex" @click="is_tag_cloud_shown = true">
+                                        <span>tags</span>
+                                    </div>
+                                </li>
                             </ul>
                         </li>
                     </ul>
@@ -223,6 +238,7 @@ watch([filter, is_asc, sort, is_randomized], update);
     <Gallery v-else-if="token && page == PageType.Gallery" :data="data"></Gallery>
     <Upload v-if="token && !single_preview" @done="uploaded"></Upload>
     <FullScreenPreview v-if="token && single_preview" :meta="single_preview" @end="() => (single_preview = null)"></FullScreenPreview>
+    <TagCloud v-if="is_tag_cloud_shown" :data="data" @commit="commit_filter" @quit="is_tag_cloud_shown = false"></TagCloud>
 </template>
 
 <style scoped lang="postcss"></style>
