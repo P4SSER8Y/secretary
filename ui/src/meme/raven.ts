@@ -8,7 +8,7 @@ function sleep(timeout: number) {
     });
 }
 
-async function raven(gate?: string, timeout: number = Infinity): Promise<string> {
+async function raven(gate?: string, expire?: number, timeout: number = Infinity): Promise<string> {
     if (!gate) throw Error("Raven doesn't known where to fly");
     localStorage.removeItem('token');
     let cb = new URL('raven.html', window.location.href);
@@ -16,6 +16,9 @@ async function raven(gate?: string, timeout: number = Infinity): Promise<string>
     url.searchParams.set('c', cb.href);
     url.searchParams.set('f', 'meme');
     url.searchParams.set('t', '1');
+    if (expire) {
+        url.searchParams.set('e', expire.toString());
+    }
 
     const width = 300;
     const height = 400;

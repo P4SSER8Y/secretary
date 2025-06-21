@@ -23,3 +23,9 @@ export interface ApiListParams {
     asc?: boolean;
     sort?: SortKey;
 }
+
+export interface TokenPayload {
+    n: string;
+    f: string;
+    exp: number;
+}
