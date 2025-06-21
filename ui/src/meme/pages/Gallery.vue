@@ -7,81 +7,109 @@ const props = defineProps<{
 }>();
 
 let index = ref(0);
-let img_center_valid = computed(() => props.data && index.value >= 0 && index.value < props.data.meta.length);
-let img_center_src = computed(() => (img_center_valid ? 'i/raw/' + props.data!.meta[index.value].uuid : ''));
+let idx_random = ref(0);
+let idx_next = ref(0);
+let idx_previous = ref(0);
+
+function is_img_valid(idx: number) {
+    return props.data && idx >= 0 && idx < props.data.meta.length;
+}
+function get_img_src(idx: number) {
+    return is_img_valid(idx) ? 'i/raw/' + props.data!.meta[idx].uuid : '';
+}
+
+let img_center_valid = computed(() => is_img_valid(index.value));
+let img_center_src = computed(() => get_img_src(index.value));
+let img_random_src = computed(() => get_img_src(idx_random.value));
+let img_next_src = computed(() => get_img_src(idx_next.value));
+let img_previous_src = computed(() => get_img_src(idx_previous.value));
 
 function next() {
+    idx_previous.value = index.value;
+    index.value = idx_next.value;
     if (props.data) {
-        if (index.value < props.data.meta.length - 1) {
-            index.value++;
+        if (idx_next.value < props.data.meta.length - 1) {
+            idx_next.value++;
         } else {
-            index.value = 0;
+            idx_next.value = 0;
         }
     } else {
-        index.value = 0;
+        idx_next.value = 0;
     }
 }
 
 function previous() {
+    idx_next.value = index.value;
+    index.value = idx_previous.value;
     if (props.data) {
-        if (index.value > 0) {
-            index.value--;
+        if (idx_previous.value > 0) {
+            idx_previous.value--;
         } else {
-            index.value = props.data.meta.length - 1;
+            idx_previous.value = props.data.meta.length - 1;
         }
     } else {
-        index.value = 0;
+        idx_previous.value = 0;
     }
 }
 
 function random() {
+    index.value = idx_random.value;
     if (props.data) {
-        index.value = Math.floor(Math.random() * props.data.meta.length);
+        let length = props.data.meta.length;
+        idx_random.value = Math.floor(Math.random() * length);
+        idx_next.value = (idx_random.value + 1) % length;
+        idx_previous.value = (idx_random.value - 1 + length) % length;
     } else {
-        index.value = 0;
+        idx_random.value = 0;
+        idx_next.value = 0;
+        idx_previous.value = 0;
     }
 }
 
 onMounted(random);
-watch(() => props.data, random);
+watch(
+    () => props.data,
+    () => {
+        if (!is_img_valid(idx_random.value)) {
+            random();
+        }
+        random();
+    }
+);
 </script>
 
 <template>
-    <div class="flex items-start justify-center h-screen">
-        <img
-            v-if="img_center_valid"
-            :src="img_center_src"
-            class="rounded-lg mx-8 my-8 transition-opacity duration-250"
-            :style="{
-                'max-width': 'calc(100vw - 4rem)',
-                'max-height': 'calc(100vh - 8rem)',
-                width: 'auto',
-                height: 'auto',
-                'object-fit': 'contain',
-            }"
-            @click="random"
-        />
-    </div>
-    <div class="join fixed bottom-4 left-1/2 transform -translate-x-1/2 opacity-0 hover:opacity-80">
-        <button class="join-item btn" @click="previous">&lt;&lt;&lt;</button>
-        <button class="join-item btn text-3xl" @click="random">⚄</button>
-        <button class="join-item btn" @click="next">&gt;&gt;&gt;</button>
+    <div class="flex items-center justify-center h-dvh" v-if="img_center_valid">
+        <Transition>
+            <img
+                :src="img_center_src"
+                :key="img_center_src"
+                class="absolute rounded-lg m-8 transition-shadow duration-250 ease-in-out"
+                :style="{
+                    'max-width': 'calc(100dvw - 4rem)',
+                    'max-height': 'calc(100dvh - 4rem)',
+                    'object-fit': 'contain',
+                }"
+                @click="random"
+            />
+        </Transition>
+        <img v-show="false" :src="img_next_src" />
+        <img v-show="false" :src="img_previous_src" />
+        <img v-show="false" :src="img_random_src" />
+        <div class="join fixed bottom-4 left-1/2 transform -translate-x-1/2 opacity-0 hover:opacity-80">
+            <button class="join-item btn" @click="previous">&lt;&lt;&lt;</button>
+            <button class="join-item btn text-3xl" @click="random">⚄</button>
+            <button class="join-item btn" @click="next">&gt;&gt;&gt;</button>
+        </div>
     </div>
 </template>
 
 <style lang="postcss" scoped>
-@keyframes fadeIn {
-    from {
-        opacity: 0;
-    }
-    to {
-        opacity: 1;
-    }
+.v-enter-active, .v-leave-active {
+    transition: opacity 0.5s ease;
 }
 
-img {
-    animation: fadeIn 0.5s ease-in;
+.v-enter-from, .v-leave-to {
     opacity: 0;
-    animation-fill-mode: forwards;
 }
 </style>

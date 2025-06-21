@@ -58,7 +58,7 @@ function previous() {
 <template>
     <div class="h-dvh w-dvw overflow-auto">
         <wc-waterfall :cols="cols">
-            <div v-for="item in props.data?.meta.slice(min_idx, min_idx + waterfall_pagnition)" :key="item.uuid" class="mx-auto">
+            <div v-for="item in props.data?.meta.slice(min_idx, min_idx + waterfall_pagnition)" :key="item.uuid" class="mx-auto ease-in-out">
                 <div
                         class="tooltip tooltip-bottom tooltip-info gap-1 m-1"
                         :data-tip="item.tags?.join('/') ?? 'wtf'"
