@@ -56,7 +56,7 @@ function previous() {
 </script>
 
 <template>
-    <div class="h-dvh w-dvw overflow-auto">
+    <div class="h-dvh w-dvw p-4 overflow-auto overflow-x-hidden">
         <wc-waterfall :cols="cols">
             <div v-for="item in props.data?.meta.slice(min_idx, min_idx + waterfall_pagnition)" :key="item.uuid" class="mx-auto ease-in-out">
                 <div
