@@ -31,8 +31,8 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-    <div class="cover fullScreenUpload flex" @click="close">
-        <img :src="img_src" class="max-h-[calc(60dvh)] max-w-[calc(90dvw)] object-contain" />
+    <div class="cover fullScreenUpload flex max-h-[calc(100dvh - 4rem)] max-w-[calc(100dvw - 4rem)] p-6" @click="close">
+        <img :src="img_src" class="object-contain h-full w-full" />
     </div>
 </template>
 
