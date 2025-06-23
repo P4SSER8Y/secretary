@@ -120,7 +120,10 @@ onMounted(() => {
 <template>
     <div class="fixed navbar bg-base-100 z-50 opacity-0 hover:opacity-90 rounded-3xl">
         <div class="flex-1 min-w-0">
-            <input type="text" placeholder="" class="input input-ghost w-full" v-model="filter" />
+            <div v-if="token" class="w-full flex">
+                <input type="text" placeholder="" class="input input-ghost w-full" v-model="filter" />
+                <button class="btn btn-ghost" @click="is_tag_cloud_shown = true">𐄳</button>
+            </div>
         </div>
         <div v-if="token" class="dropdown dropdown-end">
             <div tabindex="0" role="button" class="btn btn-ghost">
@@ -191,11 +194,6 @@ onMounted(() => {
                                     <div class="flex" @click="() => (page = PageType.Gallery)">
                                         <input type="radio" class="radio" :checked="page == PageType.Gallery" />
                                         <span>gallery</span>
-                                    </div>
-                                </li>
-                                <li>
-                                    <div class="flex" @click="is_tag_cloud_shown = true">
-                                        <span>tags</span>
                                     </div>
                                 </li>
                             </ul>

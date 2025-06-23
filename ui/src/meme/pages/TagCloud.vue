@@ -15,7 +15,7 @@ function update_tag_list() {
         let map: Map<string, number> = new Map();
         for (let i = 0; i < props.data.meta.length; i++) {
             for (let j = 0; j < (props.data.meta[i].tags?.length ?? 0); j++) {
-                let key = props.data.meta[i].tags![j];
+                let key = props.data.meta[i].tags![j].toLowerCase();
                 map.set(key, (map.get(key) ?? 0) + 1);
             }
         }
@@ -77,6 +77,7 @@ onBeforeUnmount(() => {
                     {{ item.name }}
                     <span v-if="item.count > 1" class="text-xs">{{ item.count }}</span>
                 </button>
+                <div class="flex-1"></div>
             </div>
         </div>
     </div>
