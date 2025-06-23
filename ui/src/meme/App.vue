@@ -17,6 +17,12 @@ const api = getCurrentInstance()?.appContext.config.globalProperties.$api;
 let token: Ref<string | null> = ref(null);
 let payload: Ref<TokenPayload | null> = computed(() => token.value && JSON.parse(atob(token.value.split('.')[1])));
 let expire: Ref<number> = ref(0);
+let display_expire = computed(
+    () =>
+        `${expire.value / 60000 < 10 ? '0' : ''}${Math.floor(expire.value / 60000)}:${
+            (expire.value % 60000) / 1000 < 10 ? '0' : ''
+        }${Math.floor((expire.value % 60000) / 1000)}`
+);
 let name: Ref<string | null> = ref(null);
 let data: Ref<MemeList | null> = ref(null);
 let filter: Ref<string> = ref('');
@@ -128,10 +134,13 @@ onMounted(() => {
         <div class="flex-1 min-w-0 w-full">
             <label v-if="token" class="w-full input input-ghost flex items-center gap-2">
                 <div class="w-full flex-1 indicator">
-                    <span class="indicator-item badge">{{ data?.meta.length ?? 0 }}</span>
+                    <span class="indicator-item badge font-mono">{{ data?.meta.length ?? 0 }}</span>
                     <input type="text" placeholder="" class="input input-ghost w-full" v-model="filter" />
                 </div>
-                <button class="btn btn-sm btn-ghost" @click="is_tag_cloud_shown = true">𐄳</button>
+                <div class="join">
+                    <button class="join-item btn btn-sm btn-ghost" @click="is_tag_cloud_shown = true">𐄳</button>
+                    <button class="join-item btn btn-sm btn-ghost" @click="filter = ''">X</button>
+                </div>
             </label>
         </div>
         <div v-if="token" class="dropdown dropdown-end">
@@ -146,7 +155,9 @@ onMounted(() => {
                             <a>{{ name }}</a>
                         </li>
                         <li>
-                            <a @click="logout">logout in {{ Math.ceil(expire / 1000.0) }}s</a>
+                            <a @click="logout"
+                                >logout in <span class="font-mono">{{ display_expire }}</span></a
+                            >
                         </li>
                         <li><a @click="update">update</a></li>
                     </ul>
@@ -244,7 +255,13 @@ onMounted(() => {
     <Waterfall v-if="token && page == PageType.Waterfall" :data="data" @show="show"> </Waterfall>
     <Gallery v-else-if="token && page == PageType.Gallery" :data="data"></Gallery>
     <Upload v-if="token && !single_preview" @done="uploaded"></Upload>
-    <FullScreenPreview v-if="token && single_preview" :meta="single_preview" @end="() => (single_preview = null)" @deleted="(uuid) => delete_item(uuid)"> </FullScreenPreview>
+    <FullScreenPreview
+        v-if="token && single_preview"
+        :meta="single_preview"
+        @end="() => (single_preview = null)"
+        @deleted="(uuid) => delete_item(uuid)"
+    >
+    </FullScreenPreview>
     <TagCloud v-if="is_tag_cloud_shown" :data="data" @commit="commit_filter" @quit="is_tag_cloud_shown = false"> </TagCloud>
 </template>
 
