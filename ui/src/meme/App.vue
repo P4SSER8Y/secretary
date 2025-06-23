@@ -93,6 +93,12 @@ function commit_filter(data: string) {
     filter.value = data;
 }
 
+function delete_item(uuid: string) {
+    if (data.value) {
+        data.value.meta = data.value.meta.filter((item) => item.uuid !== uuid);
+    }
+}
+
 watch(token, (newVal) => {
     if (newVal) {
         const payload = JSON.parse(atob(newVal.split('.')[1]));
@@ -118,12 +124,15 @@ onMounted(() => {
 </script>
 
 <template>
-    <div class="fixed navbar bg-base-100 z-50 opacity-0 hover:opacity-90 rounded-3xl">
-        <div class="flex-1 min-w-0">
-            <div v-if="token" class="w-full flex">
-                <input type="text" placeholder="" class="input input-ghost w-full" v-model="filter" />
-                <button class="btn btn-ghost" @click="is_tag_cloud_shown = true">𐄳</button>
-            </div>
+    <div class="fixed navbar bg-base-100 z-50 opacity-0 hover:opacity-90 duration-300 ease-in-out rounded-3xl">
+        <div class="flex-1 min-w-0 w-full">
+            <label v-if="token" class="w-full input input-ghost flex items-center gap-2">
+                <div class="w-full flex-1 indicator">
+                    <span class="indicator-item badge">{{ data?.meta.length ?? 0 }}</span>
+                    <input type="text" placeholder="" class="input input-ghost w-full" v-model="filter" />
+                </div>
+                <button class="btn btn-sm btn-ghost" @click="is_tag_cloud_shown = true">𐄳</button>
+            </label>
         </div>
         <div v-if="token" class="dropdown dropdown-end">
             <div tabindex="0" role="button" class="btn btn-ghost">
@@ -235,8 +244,8 @@ onMounted(() => {
     <Waterfall v-if="token && page == PageType.Waterfall" :data="data" @show="show"> </Waterfall>
     <Gallery v-else-if="token && page == PageType.Gallery" :data="data"></Gallery>
     <Upload v-if="token && !single_preview" @done="uploaded"></Upload>
-    <FullScreenPreview v-if="token && single_preview" :meta="single_preview" @end="() => (single_preview = null)"></FullScreenPreview>
-    <TagCloud v-if="is_tag_cloud_shown" :data="data" @commit="commit_filter" @quit="is_tag_cloud_shown = false"></TagCloud>
+    <FullScreenPreview v-if="token && single_preview" :meta="single_preview" @end="() => (single_preview = null)" @deleted="(uuid) => delete_item(uuid)"> </FullScreenPreview>
+    <TagCloud v-if="is_tag_cloud_shown" :data="data" @commit="commit_filter" @quit="is_tag_cloud_shown = false"> </TagCloud>
 </template>
 
 <style scoped lang="postcss"></style>
