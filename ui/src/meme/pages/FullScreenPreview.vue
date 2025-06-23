@@ -10,7 +10,7 @@ const emit = defineEmits<{ end: []; deleted: [uuid: string] }>();
 const img_src = computed(() => `i/raw/${props.meta.uuid}`);
 let delete_code: Ref<string | null> = ref(null);
 let is_hold_on = ref(true);
-let timer = 0;
+let timer: ReturnType<typeof setTimeout> | number = 0;
 
 const handle_key_press = (e: KeyboardEvent) => {
     if (e.key === 'Escape') {
@@ -23,7 +23,7 @@ function close() {
 }
 
 function request_delete() {
-    api.get('delete', { params: { id: props.meta.uuid } }).then((res) => {
+    api?.get('delete', { params: { id: props.meta.uuid } }).then((res) => {
         clearTimeout(timer);
         delete_code.value = res.data;
         is_hold_on.value = true;
@@ -42,7 +42,7 @@ function request_delete() {
 function confirm_delete() {
     clearTimeout(timer);
     emit('deleted', props.meta.uuid);
-    api.get('delete', { params: { code: delete_code.value } })
+    api?.get('delete', { params: { code: delete_code.value } })
         .then((res) => {
             console.log(`${res.data}`);
             console.log(`deleted ${props.meta.uuid}`);
@@ -90,11 +90,7 @@ onBeforeUnmount(() => {
             >
                 delete
             </button>
-            <button
-                v-if="delete_code"
-                class="join-item btn btn-xs btn-success duration-300 ease-in-out"
-                @click.stop="delete_code = null"
-            >
+            <button v-if="delete_code" class="join-item btn btn-xs btn-success duration-300 ease-in-out" @click.stop="cancel_delete">
                 cancel
             </button>
         </div>
