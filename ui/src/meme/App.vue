@@ -17,12 +17,12 @@ const api = getCurrentInstance()?.appContext.config.globalProperties.$api;
 let token: Ref<string | null> = ref(null);
 let payload: Ref<TokenPayload | null> = computed(() => token.value && JSON.parse(atob(token.value.split('.')[1])));
 let expire: Ref<number> = ref(0);
-let display_expire = computed(
-    () =>
-        `${expire.value / 60000 < 10 ? '0' : ''}${Math.floor(expire.value / 60000)}:${
-            (expire.value % 60000) / 1000 < 10 ? '0' : ''
-        }${Math.floor((expire.value % 60000) / 1000)}`
-);
+let display_expire = computed(() => {
+    const minutes = Math.floor(expire.value / 60000);
+    const seconds = Math.floor((expire.value % 60000) / 1000);
+    const padZero = (num: number) => num < 10 ? `0${num}` : `${num}`;
+    return `${padZero(minutes)}:${padZero(seconds)}`;
+});
 let name: Ref<string | null> = ref(null);
 let data: Ref<MemeList | null> = ref(null);
 let filter: Ref<string> = ref('');
