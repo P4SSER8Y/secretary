@@ -21,6 +21,8 @@ jobs:
         run: ./scripts/install.sh
       - name: Build
         run: ./scripts/build.sh ${{matrix.target}}
+        env:
+          VITE_HODOR_ENTRY: ${{ secrets.HODOR_ENTRY }}
       - name: Show artifacts
         run: tree ./
         working-directory: ./dist

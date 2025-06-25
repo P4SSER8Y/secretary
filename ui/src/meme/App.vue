@@ -11,6 +11,7 @@ import Upload from './pages/Upload.vue';
 import FullScreenPreview from './pages/FullScreenPreview.vue';
 import TagCloud from './pages/TagCloud.vue';
 
+const HODOR_ENTRY = import.meta.env.VITE_HODOR_ENTRY;
 const config = useConfigStore();
 const { page, waterfall_pagnition } = storeToRefs(config);
 const api = getCurrentInstance()?.appContext.config.globalProperties.$api;
@@ -245,7 +246,7 @@ onMounted(() => {
             class="btn btn-ghost text-2xl"
             @click="
                 () => {
-                    raven('https://hodor.32323235.xyz/').then((res) => (token = res));
+                    raven(HODOR_ENTRY).then((res) => (token = res));
                 }
             "
         >
