@@ -68,6 +68,12 @@ const update = debounce(async function update() {
     }
 }, 500);
 
+const force_update = debounce(async function () {
+    if (token.value) {
+        await api?.get('check');
+    }
+}, 1000);
+
 async function logout() {
     filter.value = '';
     token.value = null;
@@ -160,7 +166,7 @@ onMounted(() => {
                                 >logout in <span class="font-mono">{{ display_expire }}</span></a
                             >
                         </li>
-                        <li><a @click="update">update</a></li>
+                        <li><a @click="force_update">update</a></li>
                     </ul>
                 </li>
                 <li>
