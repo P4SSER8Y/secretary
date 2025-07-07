@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, path::Path};
 
 use chrono::Local;
 use clap::{Parser, Subcommand};
@@ -139,11 +139,19 @@ async fn go(config: &Figment) -> Result<(), rocket::Error> {
 fn iter_load_config(file: &str) -> Figment {
     let mut config = Figment::new();
     let mut set = HashSet::new();
+    let mut data_path = "".to_string();
     let mut file = file.to_string();
     while !set.contains(&file) {
-        println!("Load and merge {}", file);
+        let file_path = Path::new(&data_path).join(&file);
+        println!("Load and merge {:?}", file_path);
         set.insert(file.clone());
-        config = config.merge(Toml::file(&file).nested()).select(PROFILE);
+        config = config.merge(Toml::file(&file_path).nested()).select(PROFILE);
+
+        if let Ok(path) = config.find_value("data_path") {
+            if let Some(path) = path.as_str() {
+                data_path = path.to_string();
+            }
+        }
         let local = config.find_value("local");
         if local.is_err() {
             break;

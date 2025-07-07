@@ -6,8 +6,7 @@ use jsonwebtoken::{decode, DecodingKey, Validation};
 use log::{debug, info};
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::HashMap,
-    sync::OnceLock,
+    collections::HashMap, path::PathBuf, sync::OnceLock
 };
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -53,7 +52,7 @@ pub fn check_key(key: &str) -> Result<&TokenPayload> {
 pub async fn init(
     jwt_secret_key: &str,
     key_salt: &str,
-    key_file: &str,
+    key_file: &PathBuf,
 ) -> anyhow::Result<()> {
     let key = BASE64.decode(jwt_secret_key)?;
     let key = DecodingKey::from_ec_pem(&key)?;
@@ -62,12 +61,12 @@ pub async fn init(
 
     let key_db = std::fs::read_to_string(key_file);
     if key_db.is_err() {
-        log::error!("read {} failed", key_file);
+        log::error!("read {:?} failed", key_file);
     } else {
         let key_db = key_db.unwrap();
         let key_db = serde_yaml::from_str::<HashMap<String, TokenPayload>>(&key_db);
         if key_db.is_err() {
-            log::error!("parse {} failed: {:?}", key_file, key_db.err());
+            log::error!("parse {:?} failed: {:?}", key_file, key_db.err());
         } else {
             let key_db = key_db.unwrap();
             KEY_DB.get_or_init(|| key_db);

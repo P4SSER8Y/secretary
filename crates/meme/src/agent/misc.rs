@@ -11,11 +11,11 @@ use rocket::{
 };
 use s3::Bucket;
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 use std::{
     collections::{HashMap, HashSet},
     sync::OnceLock,
 };
+use std::{path::Path, sync::Arc};
 
 #[derive(Deserialize, Debug, Serialize, Clone)]
 #[serde(crate = "rocket::serde")]
@@ -411,6 +411,12 @@ pub async fn init(config: &Figment) -> anyhow::Result<()> {
         .as_str()
         .ok_or(anyhow!("key_file not found"))?
         .to_owned();
+    let data_path = config
+        .find_value("data_path")?
+        .as_str()
+        .ok_or(anyhow!("data_path not set"))?
+        .to_owned();
+    let key_file = Path::new(&data_path).join(key_file);
     let key_salt = config
         .find_value("meme.key_salt")?
         .as_str()
