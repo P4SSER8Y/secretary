@@ -18,28 +18,27 @@ jobs:
         with:
           target: ${{ matrix.target }}
       - name: Install dependencies
-        run: ./scripts/install.sh
+        run: make -j update TARGET=${{matrix.target}}
       - name: Build
-        run: ./scripts/build.sh ${{matrix.target}}
+        run: make -j TARGET=${{matrix.target}}
         env:
           VITE_HODOR_ENTRY: ${{ secrets.HODOR_ENTRY }}
       - name: Show artifacts
         run: tree ./
-        working-directory: ./dist
+        working-directory: ./build
       - name: Package
-        run: tar -czvf secretary_${{matrix.target}}.tar.gz -C ./dist/ .
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: secretary_${{matrix.target}}
-          path: ./dist/*
-          if-no-files-found: error
-          compression-level: 9
-          overwrite: false
+        run: make -j package TARGET=${{matrix.target}}
       - name: Release
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
           make_latest: true
-          files: secretary_${{matrix.target}}.tar.gz
-          
+          files: ./build/secretary_${{matrix.target}}.tar.gz
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: secretary_${{matrix.target}}.tar.gz
+          path: ./build/secretary_${{matrix.target}}.tar.gz
+          if-no-files-found: error
+          compression-level: 0
+          overwrite: true

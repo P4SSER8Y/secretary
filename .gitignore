@@ -7,3 +7,4 @@
 meme_key.yaml
 .env
 .env.*
+/build

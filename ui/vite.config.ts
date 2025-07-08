@@ -8,7 +8,7 @@ export default defineConfig(({ mode }) => {
     return {
         plugins: [vue()],
         build: {
-            outDir: '../dist/ui',
+            outDir: 'dist',
             emptyOutDir: true,
             copyPublicDir: true,
             rollupOptions: {
