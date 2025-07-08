@@ -37,8 +37,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: secretary_${{matrix.target}}.tar.gz
+          name: secretary_${{matrix.target}}
           path: ./build/secretary_${{matrix.target}}.tar.gz
           if-no-files-found: error
-          compression-level: 0
           overwrite: true
