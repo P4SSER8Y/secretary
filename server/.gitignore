@@ -1,0 +1,9 @@
+/target
+*.otf
+/*.toml
+!Rocket.toml
+!Cargo.toml
+/data
+meme_key.yaml
+.env
+.env.*
