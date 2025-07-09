@@ -25,6 +25,8 @@ jobs:
           VITE_HODOR_ENTRY: ${{ secrets.HODOR_ENTRY }}
       - name: Package
         run: make -j package TARGET=${{matrix.target}}
+        env:
+          VITE_HODOR_ENTRY: ${{ secrets.HODOR_ENTRY }}
       - name: Show artifacts
         run: tree ./
         working-directory: ./build
