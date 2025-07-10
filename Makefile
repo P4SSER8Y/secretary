@@ -1,8 +1,8 @@
 .PHONY: \
 	c clean clean-ui clean-server clean-build \
 	all ui server configure \
-	p package \
-	u update update-server update-ui \
+	p package sign\
+	u update update-server update-ui update-rsign\
 
 .DEFAULT_GOAL := all
 
@@ -22,13 +22,16 @@ clean-ui:
 clean-server:
 	cd $(SERVER_DIR) && cargo clean
 
-u update: update-ui update-server
+u update: update-ui update-server update-rsign
 
 update-ui:
 	cd $(UI_DIR) && yarn install
 
 update-server:
 	cd $(SERVER_DIR) && cargo update
+
+update-rsign:
+	cargo install rsign2
 
 all: ui server configure
 	
@@ -42,6 +45,10 @@ ifdef TARGET
 else
 	rm -f $(BUILD_DIR)/*.tar.gz && cd $(BUILD_DIR) && tar -czf $(BUILD_DIR)/secretary.tar.gz *
 endif
+
+sign: package
+	cp $(ROOT_DIR)/utility/rsign.pub $(BUILD_DIR)/rsign.pub
+	cd $(BUILD_DIR) && rsign sign -s $(ROOT_DIR)/utility/rsign.key *.tar.gz
 	
 server:
 ifdef TARGET

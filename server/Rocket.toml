@@ -8,6 +8,9 @@ limits = { file = 67108864, data-form = 67108864, bytes = 67108864 }
 ui_path = "ui"
 host = ""
 
+[default.verify]
+public_key = ""
+
 [default.switches]
 kindle = true
 weather = true

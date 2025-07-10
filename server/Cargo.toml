@@ -34,6 +34,7 @@ env_logger = "0.10.1"
 clap = { version = "4.4.13", features = ["derive"] }
 influxdb2 = { version = "0.4.5", default-features = false, features = ["rustls"] }
 cron = "0.12.0"
+minisign-verify = "0.2.4"
 
 [build-dependencies]
 anyhow = "1.0.78"

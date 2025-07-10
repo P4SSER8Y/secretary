@@ -1,8 +1,10 @@
 use std::{collections::HashSet, path::Path};
 
+use anyhow::anyhow;
 use chrono::Local;
 use clap::{Parser, Subcommand};
 use log::{info, warn};
+use minisign_verify::{PublicKey, Signature};
 use rocket::figment::{
     providers::{Format, Toml},
     Figment,
@@ -33,6 +35,8 @@ enum Commands {
     Go,
     /// print version and exit
     Version,
+    /// verify signature
+    Verify { files: Vec<String> },
 }
 
 fn is_enabled(config: &Figment, name: &str, default: bool) -> bool {
@@ -143,9 +147,11 @@ fn iter_load_config(file: &str) -> Figment {
     let mut file = file.to_string();
     while !set.contains(&file) {
         let file_path = Path::new(&data_path).join(&file);
-        println!("Load and merge {:?}", file_path);
+        eprintln!(">>> Load and merge {:?}", file_path);
         set.insert(file.clone());
-        config = config.merge(Toml::file(&file_path).nested()).select(PROFILE);
+        config = config
+            .merge(Toml::file(&file_path).nested())
+            .select(PROFILE);
 
         if let Ok(path) = config.find_value("data_path") {
             if let Some(path) = path.as_str() {
@@ -166,6 +172,30 @@ fn iter_load_config(file: &str) -> Figment {
     config
 }
 
+fn verify(config: &Figment, files: &Vec<String>) -> anyhow::Result<()> {
+    if files.len() == 0 {
+        return Err(anyhow!("No files to verify"));
+    }
+    let public_key = config
+        .find_value("verify.public_key")?
+        .as_str()
+        .ok_or(anyhow!("verify.public_key is not a valid string"))?
+        .to_owned();
+    log::info!("Verifying files with public key: {}", public_key);
+    let public_key = PublicKey::from_base64(&public_key).map_err(|e| anyhow!("invalid public key: {}", e))?;
+    for file in files {
+        let content = std::fs::read(Path::new(file))
+            .map_err(|e| anyhow!("Failed to read file {}: {}", file, e))?;
+        let sign = Signature::from_file(Path::new(&format!("{}.minisig", file)))
+            .map_err(|e| anyhow!("Failed to read signature from {}.minisig: {}", file, e))?;
+        let _ = public_key
+            .verify(&content, &sign, false)
+            .map_err(|e| anyhow!("Failed to verify {}: {}", file, e))?;
+        log::info!("verify {} success", file);
+    }
+    Ok(())
+}
+
 /// 42
 #[rocket::main]
 async fn main() -> Result<(), rocket::Error> {
@@ -180,6 +210,12 @@ async fn main() -> Result<(), rocket::Error> {
     match cli.command {
         Some(Commands::Version) => {
             println!("{}", VERSION);
+            Ok(())
+        }
+        Some(Commands::Verify { files }) => {
+            if let Err(e) = verify(&config, &files) {
+                log::error!("Verify failed: {}", e);
+            }
             Ok(())
         }
         Some(Commands::Go) | None => go(&config).await,
