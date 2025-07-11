@@ -68,9 +68,9 @@ const update = debounce(async function update() {
     }
 }, 500);
 
-const force_update = debounce(async function () {
+const force_update = debounce(function () {
     if (token.value) {
-        await api?.get('check');
+        api?.get('update').then(() => update());
     }
 }, 1000);
 

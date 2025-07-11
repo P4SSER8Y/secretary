@@ -62,6 +62,19 @@ async fn check(data: TokenPayload) -> Result<String, NotFound<()>> {
     Ok(format!("Hello {} of {}", data.name, data.family))
 }
 
+#[get("/update")]
+async fn update(data: TokenPayload) -> Result<String, NotFound<()>> {
+    let now = SystemTime::now();
+    let _ = agent::force_update(&data.name).await;
+    let json = serde_json::json!(
+        {
+            "name": data.name,
+            "cost": now.elapsed().unwrap().as_secs_f64(),
+        }
+    );
+    Ok(json.to_string())
+}
+
 #[get("/login")]
 async fn login() -> Redirect {
     let host = HOST.get();
@@ -509,6 +522,7 @@ pub async fn build(
             delete_item,
             dither_random,
             dither_uuid,
+            update,
         ],
     ))
 }
