@@ -21,7 +21,7 @@ let expire: Ref<number> = ref(0);
 let display_expire = computed(() => {
     const minutes = Math.floor(expire.value / 60000);
     const seconds = Math.floor((expire.value % 60000) / 1000);
-    const padZero = (num: number) => num < 10 ? `0${num}` : `${num}`;
+    const padZero = (num: number) => (num < 10 ? `0${num}` : `${num}`);
     return `${padZero(minutes)}:${padZero(seconds)}`;
 });
 let name: Ref<string | null> = ref(null);
@@ -68,9 +68,23 @@ const update = debounce(async function update() {
     }
 }, 500);
 
+const force_update_cost: Ref<string | null> = ref(null);
 const force_update = debounce(function () {
     if (token.value) {
-        api?.get('update').then(() => update());
+        force_update_cost.value = "0.00";
+        let now = new Date().getTime();
+        let timer_id = setInterval(() => {
+            let cost = Math.floor((new Date().getTime() - now)) / 1000;
+            force_update_cost.value = cost.toFixed(2);
+        }, 33);
+        api?.get('update')
+            .then(() => {
+                update();
+            })
+            .finally(() => {
+                clearTimeout(timer_id);
+                force_update_cost.value = null;
+            });
     }
 }, 1000);
 
@@ -166,7 +180,12 @@ onMounted(() => {
                                 >logout in <span class="font-mono">{{ display_expire }}</span></a
                             >
                         </li>
-                        <li><a @click="force_update">update</a></li>
+                        <li>
+                            <a @click="force_update">
+                                update
+                                <span v-if="force_update_cost" class="font-mono"> {{ force_update_cost }}s </span>
+                            </a>
+                        </li>
                     </ul>
                 </li>
                 <li>

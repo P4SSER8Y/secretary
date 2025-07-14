@@ -8,7 +8,7 @@ const app = createApp(App);
 const pinia = createPinia();
 app.config.globalProperties.$api = axios.create({
     baseURL: 'i/',
-    timeout: 5000,
+    timeout: 15000,
 });
 app.use(pinia);
 app.mount('#app');
