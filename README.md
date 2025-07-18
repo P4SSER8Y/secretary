@@ -1,6 +1,7 @@
 # secretary
 
-![GitHub Actions](https://github.com/P4SSER8Y/secretary/actions/workflows/full.yml/badge.svg)
+![GitHub Actions](https://github.com/P4SSER8Y/secretary/actions/workflows/develop.yml/badge.svg)
+![GitHub Actions](https://github.com/P4SSER8Y/secretary/actions/workflows/release.yml/badge.svg)
 
 a server runned at home
 
@@ -24,3 +25,6 @@ A pastebin supported files and text.
 
 ## tsdb
 A wrapper for InfluxDB2.
+
+## meme
+Meme Heap
