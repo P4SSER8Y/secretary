@@ -106,6 +106,8 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped lang="postcss">
+@reference "tailwindcss";
+
 .flex {
     display: flex;
     align-items: center;

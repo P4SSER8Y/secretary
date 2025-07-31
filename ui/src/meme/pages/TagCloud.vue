@@ -84,6 +84,8 @@ onBeforeUnmount(() => {
 </template>
 
 <style lang="postcss" scoped>
+@reference "tailwindcss";
+
 .cover {
     position: absolute;
     left: 0;

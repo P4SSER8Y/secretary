@@ -168,7 +168,7 @@ onMounted(() => {
             <div tabindex="0" role="button" class="btn btn-ghost">
                 <div class="w-2">↓</div>
             </div>
-            <ul tabindex="0" class="menu menu-sm dropdown-content bg-base-100 rounded-box z-[1] mt-3 w-80 p-2 shadow">
+            <ul tabindex="0" class="menu menu-sm dropdown-content bg-base-100 rounded-box z-1 mt-3 w-80 p-2 shadow">
                 <li>
                     <span>user</span>
                     <ul>
@@ -176,9 +176,7 @@ onMounted(() => {
                             <a>{{ name }}</a>
                         </li>
                         <li>
-                            <a @click="logout"
-                                >logout in <span class="font-mono">{{ display_expire }}</span></a
-                            >
+                            <a @click="logout">logout in <span class="font-mono">{{ display_expire }}</span></a>
                         </li>
                         <li>
                             <a @click="force_update">
@@ -195,7 +193,8 @@ onMounted(() => {
                             <span>general</span>
                             <ul>
                                 <li>
-                                    <div class="flex"><input type="checkbox" class="toggle" v-model="is_randomized" /> random</div>
+                                    <div class="flex"><input type="checkbox" class="toggle" v-model="is_randomized" />
+                                        random </div>
                                 </li>
                                 <li v-if="!is_randomized">
                                     <div class="flex" @click="() => (is_asc = !is_asc)">
@@ -227,12 +226,8 @@ onMounted(() => {
                             <ul>
                                 <li>
                                     <div @click="() => (page = PageType.Waterfall)">
-                                        <input
-                                            type="radio"
-                                            class="radio"
-                                            :checked="page == PageType.Waterfall"
-                                            @click="() => (is_asc = !is_asc)"
-                                        />
+                                        <input type="radio" class="radio" :checked="page == PageType.Waterfall"
+                                            @click="() => (is_asc = !is_asc)" />
                                         <span>waterfall</span>
                                     </div>
                                 </li>
@@ -251,14 +246,8 @@ onMounted(() => {
                     <ul>
                         <li>
                             <div>
-                                <input
-                                    type="range"
-                                    class="range range-xs"
-                                    min="10"
-                                    max="50"
-                                    step="5"
-                                    v-model.number="waterfall_pagnition"
-                                />
+                                <input type="range" class="range range-xs" min="10" max="50" step="5"
+                                    v-model.number="waterfall_pagnition" />
                                 <div>{{ waterfall_pagnition }}</div>
                             </div>
                         </li>
@@ -266,29 +255,24 @@ onMounted(() => {
                 </li>
             </ul>
         </div>
-        <div
-            v-else
-            class="btn btn-ghost text-2xl"
-            @click="
-                () => {
-                    raven(HODOR_ENTRY).then((res) => (token = res));
-                }
-            "
-        >
+        <div v-else class="btn btn-ghost text-2xl" @click="
+            () => {
+                raven(HODOR_ENTRY).then((res) => (token = res));
+            }
+        ">
             ⛭
         </div>
     </div>
     <Waterfall v-if="token && page == PageType.Waterfall" :data="data" @show="show"> </Waterfall>
     <Gallery v-else-if="token && page == PageType.Gallery" :data="data"></Gallery>
     <Upload v-if="token && !single_preview" @done="uploaded"></Upload>
-    <FullScreenPreview
-        v-if="token && single_preview"
-        :meta="single_preview"
-        @end="() => (single_preview = null)"
-        @deleted="(uuid) => delete_item(uuid)"
-    >
+    <FullScreenPreview v-if="token && single_preview" :meta="single_preview" @end="() => (single_preview = null)"
+        @deleted="(uuid) => delete_item(uuid)">
     </FullScreenPreview>
-    <TagCloud v-if="is_tag_cloud_shown" :data="data" @commit="commit_filter" @quit="is_tag_cloud_shown = false"> </TagCloud>
+    <TagCloud v-if="is_tag_cloud_shown" :data="data" @commit="commit_filter" @quit="is_tag_cloud_shown = false">
+    </TagCloud>
 </template>
 
-<style scoped lang="postcss"></style>
+<style scoped lang="postcss">
+@reference "tailwindcss";
+</style>

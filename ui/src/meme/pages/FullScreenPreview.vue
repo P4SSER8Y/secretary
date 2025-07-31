@@ -79,18 +79,16 @@ onBeforeUnmount(() => {
     </div>
     <div class="fixed bottom-0 right-0 pb-4 z-50">
         <div class="join">
-            <button v-if="!delete_code" class="join-item btn btn-xs btn-ghost duration-300 ease-in-out" @click.stop="request_delete">
+            <button v-if="!delete_code" class="join-item btn btn-xs btn-ghost duration-300 ease-in-out"
+                @click.stop="request_delete">
                 🗑️
             </button>
-            <button
-                v-else
-                class="join-item btn btn-xs btn-error duration-300 ease-in-out"
-                @click.stop="confirm_delete"
-                :disabled="is_hold_on"
-            >
+            <button v-else class="join-item btn btn-xs btn-error duration-300 ease-in-out" @click.stop="confirm_delete"
+                :disabled="is_hold_on">
                 delete
             </button>
-            <button v-if="delete_code" class="join-item btn btn-xs btn-success duration-300 ease-in-out" @click.stop="cancel_delete">
+            <button v-if="delete_code" class="join-item btn btn-xs btn-success duration-300 ease-in-out"
+                @click.stop="cancel_delete">
                 cancel
             </button>
         </div>
@@ -98,6 +96,8 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped lang="postcss">
+@reference "tailwindcss";
+
 .flex {
     display: flex;
     align-items: center;
