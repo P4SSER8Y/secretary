@@ -1,4 +1,11 @@
 @import 'tailwindcss';
+@plugin "daisyui";
+@plugin "daisyui/theme" {
+  name: "p5";
+  default: true;
+  --color-primary: #ff0022;
+  --color-base-100: #363636;
+}
 
 html {
   background: url(./assets/overlay.png) repeat;
