@@ -153,10 +153,10 @@ onMounted(() => {
 <template>
     <div class="fixed navbar bg-base-100 z-50 opacity-0 hover:opacity-90 duration-300 ease-in-out rounded-3xl">
         <div class="flex-1 min-w-0 w-full">
-            <label v-if="token" class="w-full input input-ghost flex items-center gap-2">
+            <label v-if="token" class="w-full flex items-center gap-2">
                 <div class="w-full flex-1 indicator">
-                    <span class="indicator-item badge font-mono">{{ data?.meta.length ?? 0 }}</span>
                     <input type="text" placeholder="" class="input input-ghost w-full" v-model="filter" />
+                    <span class="indicator-item badge font-mono">{{ data?.meta.length ?? 0 }}</span>
                 </div>
                 <div class="join">
                     <button class="join-item btn btn-sm btn-ghost" @click="is_tag_cloud_shown = true">𐄳</button>
