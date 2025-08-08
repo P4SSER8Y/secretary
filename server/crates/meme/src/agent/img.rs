@@ -30,6 +30,7 @@ pub async fn compress(data: &[u8]) -> anyhow::Result<RawImage> {
     })
 }
 
+#[allow(dead_code)]
 pub async fn guess_image_mime_type(data: &[u8]) -> anyhow::Result<RawImage> {
     let format = guess_format(data);
     match format {

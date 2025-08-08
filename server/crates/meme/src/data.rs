@@ -96,12 +96,15 @@ impl<'r, 'o: 'r> Responder<'r, 'o> for FileContent {
 pub struct UploadedImage<'r> {
     pub file: &'r [u8],
     pub tags: Option<&'r str>,
+    pub mime: &'r str,
+    pub filename: &'r str,
 }
 
 #[derive(Serialize, Debug)]
 pub struct BriefMetaData {
     pub uuid: String,
     pub timestamp: String,
+    pub mime: String,
     pub tags: Vec<String>,
 }
 
@@ -110,6 +113,7 @@ impl From<&MetaData> for BriefMetaData {
         BriefMetaData {
             uuid: meta.uuid.clone(),
             timestamp: meta.timestamp.clone(),
+            mime: meta.content_type.clone(),
             tags: meta.tags.clone(),
         }
     }

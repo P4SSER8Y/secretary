@@ -14,15 +14,24 @@ let idx_previous = ref(0);
 function is_img_valid(idx: number) {
     return props.data && idx >= 0 && idx < props.data.meta.length;
 }
+
 function get_img_src(idx: number) {
     return is_img_valid(idx) ? 'i/raw/' + props.data!.meta[idx].uuid : '';
 }
 
+function get_img_mime(idx: number) {
+    return is_img_valid(idx) ? props.data!.meta[idx].mime : '';
+}
+
 let img_center_valid = computed(() => is_img_valid(index.value));
+
 let img_center_src = computed(() => get_img_src(index.value));
 let img_random_src = computed(() => get_img_src(idx_random.value));
 let img_next_src = computed(() => get_img_src(idx_next.value));
 let img_previous_src = computed(() => get_img_src(idx_previous.value));
+
+let img_center_mime = computed(() => get_img_mime(index.value));
+let video_center_thumbnail_src = computed(() => is_img_valid(index.value) ? 'i/thumbnail/' + props.data!.meta[index.value].uuid : '');
 
 function next() {
     idx_previous.value = index.value;
@@ -79,19 +88,21 @@ watch(
 </script>
 
 <template>
-    <div class="flex items-center justify-center h-dvh" v-if="img_center_valid">
+    <div class="flex items-center justify-center h-dvh" v-if="img_center_valid" @click="random">
         <Transition>
-            <img
-                :src="img_center_src"
-                :key="img_center_src"
-                class="absolute rounded-lg m-8 transition-shadow duration-250 ease-in-out"
-                :style="{
+            <img v-if="img_center_mime.startsWith('image/')" :src="img_center_src" :key="img_center_src"
+                class="absolute rounded-lg m-8 transition-shadow duration-250 ease-in-out" :style="{
                     'max-width': 'calc(100dvw - 4rem)',
                     'max-height': 'calc(100dvh - 4rem)',
                     'object-fit': 'contain',
-                }"
-                @click="random"
-            />
+                }" />
+            <video v-else-if="img_center_mime.startsWith('video/')" :src="img_center_src" :key="img_center_src"
+                :poster="video_center_thumbnail_src"
+                class="absolute rounded-lg m-8 transition-shadow duration-250 ease-in-out" :style="{
+                    'max-width': 'calc(100dvw - 4rem)',
+                    'max-height': 'calc(100dvh - 4rem)',
+                    'object-fit': 'contain',
+                }" controls autoplay loop />
         </Transition>
         <img v-show="false" :src="img_next_src" />
         <img v-show="false" :src="img_previous_src" />
@@ -105,11 +116,13 @@ watch(
 </template>
 
 <style lang="postcss" scoped>
-.v-enter-active, .v-leave-active {
+.v-enter-active,
+.v-leave-active {
     transition: opacity 0.5s ease;
 }
 
-.v-enter-from, .v-leave-to {
+.v-enter-from,
+.v-leave-to {
     opacity: 0;
 }
 </style>

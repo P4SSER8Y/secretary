@@ -75,7 +75,8 @@ onBeforeUnmount(() => {
 
 <template>
     <div class="cover fullScreenUpload flex max-h-[calc(100dvh - 4rem)] max-w-[calc(100dvw - 4rem)] p-8" @click="close">
-        <img :src="img_src" class="object-contain w-full h-full" />
+        <img v-if="props.meta.mime.startsWith('image/')" :src="img_src" class="object-contain w-full h-full" />
+        <video v-else-if="props.meta.mime.startsWith('video/')" :src="img_src" class="object-contain w-full h-full" controls autoplay loop/>
     </div>
     <div class="fixed bottom-0 right-0 pb-4 z-50">
         <div class="join">

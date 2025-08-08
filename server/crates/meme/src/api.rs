@@ -1,5 +1,5 @@
 use crate::{
-    agent::{self, get_content, MetaData, RawImage, TokenPayload},
+    agent::{self, generate_thumbnail, generate_video_thumbnail, get_content, MetaData, TokenPayload},
     data::{BriefMetaData, FileContent, ListInfo, UploadedImage},
 };
 use anyhow::{anyhow, Context};
@@ -284,28 +284,29 @@ async fn get_thumbnail(uuid: &str, token: TokenPayload) -> FileContent {
 
 #[post("/upload", data = "<data>", format = "multipart/form-data")]
 async fn upload(data: Form<UploadedImage<'_>>, token: TokenPayload) -> (Status, String) {
-    let body = data.file;
-    if body.len() == 0 {
+    if data.file.len() == 0 {
         return (Status::NoContent, "empty file".to_string());
     }
     let uuid = uuid::Uuid::new_v4().to_string();
-    let thumbnail = agent::generate_thumbnail(body).await;
+    let mime = data.mime.to_ascii_lowercase();
+    let thumbnail = 
+    if mime.starts_with("image/") {
+        generate_thumbnail(data.file).await
+    } else if mime.starts_with("video/") {
+        generate_video_thumbnail(data.file).await
+    } else {
+        Err(anyhow!("unknown mime type"))
+    };
     if thumbnail.is_err() {
-        return (Status::InternalServerError, "failed to convert".to_string());
+        return (Status::BadRequest, format!("unknown mime type={}", mime));
     }
     let thumbnail = thumbnail.unwrap();
-    let raw_format = agent::guess_image_mime_type(data.file)
-        .await
-        .unwrap_or(RawImage {
-            data: Vec::new(),
-            mime_type: "application/octet-stream",
-            extension: "",
-        });
     let tags = agent::split_tags(data.tags);
+    let extension = data.filename.split_once('.').unwrap_or(("", "")).1;
     let meta = MetaData {
         timestamp: chrono::Utc::now().to_rfc3339(),
-        content_type: raw_format.mime_type.to_string(),
-        filename: format!("{}.{}", uuid, raw_format.extension),
+        content_type: data.mime.to_string(),
+        filename: format!("{}.{}", uuid, extension),
         thumbnail_content_type: Some(thumbnail.mime_type.to_string()),
         thumbnail: format!("{}.{}", uuid, thumbnail.extension),
         uuid: uuid.clone(),
@@ -331,12 +332,10 @@ async fn upload(data: Form<UploadedImage<'_>>, token: TokenPayload) -> (Status, 
         if result {
             let brief = BriefMetaData::from(&meta);
             let meta = Arc::new(meta);
-            #[cfg(feature = "avif")]
-            tokio::spawn(agent::format_into_avif(meta.clone()));
             let _ = agent::insert(meta.clone()).await;
-            (Status::Ok, serde_json::to_string(&brief).unwrap())
+            return (Status::Ok, serde_json::to_string(&brief).unwrap());
         } else {
-            (Status::InternalServerError, "upload failed".to_string())
+            return (Status::InternalServerError, "upload failed".to_string());
         }
     }
 }
@@ -397,8 +396,7 @@ async fn dither_random(data: TokenPayload, filter: Option<&str>, preview: bool) 
     while list.len() > 0 {
         let idx = rand::rng().random_range(0..list.len());
         let item = list.remove(idx);
-        let data =
-            agent::get_content(&format!("{}/{}/{}", "raw", item.owner, item.filename)).await;
+        let data = agent::get_content(&format!("{}/{}/{}", "raw", item.owner, item.filename)).await;
         if let Ok(data) = data {
             let result = agent::dither(&data, &item.content_type, *w, *h, preview);
             if let Ok(result) = result {
@@ -491,7 +489,7 @@ pub async fn build(
         .with_context(|| anyhow!("meme.eink_album_width not found"))?
         .to_num()
         .ok_or(anyhow!("meme.eink_album_height not a number"))?;
-    
+
     EALBUM_WIDTH.get_or_init(|| w.to_i128().unwrap() as u32);
     EALBUM_HEIGHT.get_or_init(|| h.to_i128().unwrap() as u32);
     HOST.get_or_init(move || host.to_string());

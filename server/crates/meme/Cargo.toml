@@ -39,3 +39,6 @@ image = { version = "0.25.6", features = [
 rust-crypto = "0.2.36"
 regex = "1.11.1"
 palette = "0.7.6"
+thiserror = "2.0.12"
+ez-ffmpeg = { version = "0.5.3", features = ["async"] }
+tempfile = "3.20.0"

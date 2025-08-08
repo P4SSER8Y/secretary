@@ -1,5 +1,6 @@
 export interface Meta {
     uuid: string;
+    mime: string;
     timestamp?: string;
     tags?: string[];
 }
