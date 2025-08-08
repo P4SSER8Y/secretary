@@ -2,7 +2,6 @@ use std::io::Write;
 
 use crate::agent::RawImage;
 use anyhow::{anyhow, Context};
-use ez_ffmpeg::{FfmpegContext, Output};
 #[allow(unused)]
 use log::debug;
 use tempfile::{self, NamedTempFile};
@@ -19,15 +18,22 @@ pub async fn generate_video_thumbnail<'r>(data: &[u8]) -> anyhow::Result<RawImag
         .into_temp_path();
     debug!("src: {:?}", src_file);
     debug!("dst: {:?}", dst_file);
-    FfmpegContext::builder()
-        .input(src_file.to_str().ok_or(anyhow!("WTF"))?)
-        .filter_desc("scale='min(iw,512)':-1")
-        .output(Output::from(dst_file.to_str().ok_or(anyhow!("WTF"))?).set_format("png").set_max_video_frames(1))
-        .build()?
-        .start()?
-        .await?;
-    // re-read dst file
-    let thumbnail = std::fs::read(dst_file)?;
+    let mut child = tokio::process::Command::new("ffmpeg")
+        .arg("-y")
+        .arg("-i")
+        .arg(src_file.as_os_str())
+        .arg("-vf")
+        .arg("scale='min(iw,512)':-1")
+        .arg("-vframes")
+        .arg("1")
+        .arg(dst_file.as_os_str())
+        .spawn()
+        .expect("cannot spawn ffmpeg");
+    let status = child.wait().await?;
+    if !status.success() {
+        return Err(anyhow!("ffmpeg failed with {}", status));
+    }
+    let thumbnail = std::fs::read(&dst_file)?;
     Ok(RawImage {
         data: thumbnail,
         mime_type: "image/png",
