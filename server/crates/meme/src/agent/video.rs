@@ -26,6 +26,8 @@ pub async fn generate_video_thumbnail<'r>(data: &[u8]) -> anyhow::Result<RawImag
         .arg("scale='min(iw,512)':-1")
         .arg("-vframes")
         .arg("1")
+        .arg("-update")
+        .arg("true")
         .arg(dst_file.as_os_str())
         .spawn()
         .expect("cannot spawn ffmpeg");
