@@ -102,7 +102,7 @@ watch(
                     'max-width': 'calc(100dvw - 4rem)',
                     'max-height': 'calc(100dvh - 4rem)',
                     'object-fit': 'contain',
-                }" controls autoplay loop />
+                }" autoplay loop />
         </Transition>
         <img v-show="false" :src="img_next_src" />
         <img v-show="false" :src="img_previous_src" />

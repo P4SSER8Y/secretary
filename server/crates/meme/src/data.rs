@@ -110,11 +110,13 @@ pub struct BriefMetaData {
 
 impl From<&MetaData> for BriefMetaData {
     fn from(meta: &MetaData) -> Self {
+        let mut tags = meta.tags.clone();
+        meta.content_type.split('/').filter(|x| x.len() > 0).map(|x| x.trim()).for_each(|x| tags.push(x.to_string()));
         BriefMetaData {
             uuid: meta.uuid.clone(),
             timestamp: meta.timestamp.clone(),
             mime: meta.content_type.clone(),
-            tags: meta.tags.clone(),
+            tags: tags,
         }
     }
 }

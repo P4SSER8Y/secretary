@@ -318,11 +318,11 @@ pub async fn list(name: &str, filter: Option<&str>) -> Result<Vec<Arc<MetaData>>
         match filter.chars().nth(0) {
             Some('-') => {
                 debug!("remove {}", key);
-                result.retain(|v| v.lower_tags.iter().all(|s| !s.contains(key)));
+                result.retain(|v| v.lower_tags.iter().all(|s| !s.contains(key)) && !v.content_type.contains(key));
             }
             _ => {
                 debug!("keep {}", key);
-                result.retain(|v| v.lower_tags.iter().any(|s| s.contains(key)));
+                result.retain(|v| v.lower_tags.iter().any(|s| s.contains(key)) || v.content_type.contains(key));
             }
         }
         debug!("{}", result.len());
