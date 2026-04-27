@@ -151,7 +151,7 @@ onMounted(() => {
 </script>
 
 <template>
-    <div class="fixed navbar bg-base-100 z-50 opacity-0 hover:opacity-90 duration-300 ease-in-out rounded-3xl">
+    <div class="fixed navbar bg-base-100 z-50 opacity-0 hover:opacity-90 max-md:opacity-90 duration-300 ease-in-out rounded-3xl">
         <div class="flex-1 min-w-0 w-full">
             <label v-if="token" class="w-full flex items-center gap-2">
                 <div class="w-full flex-1 indicator">
