@@ -13,6 +13,7 @@ use rocket::figment::{
 #[macro_use]
 extern crate rocket;
 
+mod decrypt;
 mod fairings;
 mod kindle;
 mod let_server_run;
@@ -37,6 +38,13 @@ enum Commands {
     Version,
     /// verify signature
     Verify { files: Vec<String> },
+    /// decrypt meme-encrypted data from stdin
+    Decrypt {
+        #[arg(short, long)]
+        owner: String,
+        #[arg(short, long)]
+        password: String,
+    },
 }
 
 fn is_enabled(config: &Figment, name: &str, default: bool) -> bool {
@@ -218,6 +226,7 @@ async fn main() -> Result<(), rocket::Error> {
             }
             Ok(())
         }
+        Some(Commands::Decrypt { owner, password }) => decrypt::run(&owner, &password),
         Some(Commands::Go) | None => go(&config).await,
     }
 }

@@ -2,6 +2,8 @@ mod agent;
 mod api;
 mod data;
 
+pub use agent::crypto;
+
 use figment::Figment;
 #[allow(unused_imports)]
 use log::info;
