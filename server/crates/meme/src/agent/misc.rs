@@ -305,6 +305,12 @@ async fn full_update(name: &str, key: Option<&[u8; 32]>) -> Result<()> {
     info!("update buffer for {}", name);
     let bucket = BUCKET.get().with_context(|| anyhow!("BUCKET not set"))?;
     let list = bucket.list(format!("meta/{}", name), None).await?;
+    {
+        let buffer = META_BUFFERS
+            .get()
+            .with_context(|| anyhow!("META_BUFFERS not set"))?;
+        buffer.write().await.remove(name);
+    }
     let mut results = Vec::new();
     for list in list {
         for object in list.contents {

@@ -151,7 +151,6 @@ watch(password, (newVal) => {
     } else {
         sessionStorage.removeItem('password');
     }
-    update();
 });
 
 onMounted(() => {
@@ -208,6 +207,7 @@ onMounted(() => {
                                     placeholder="vault password"
                                     class="input input-ghost input-xs w-full"
                                     v-model="password"
+                                    @keyup.enter="update()"
                                 />
                             </div>
                         </li>
