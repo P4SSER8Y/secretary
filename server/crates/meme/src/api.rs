@@ -1,6 +1,6 @@
 use crate::{
-    agent::{self, generate_thumbnail, generate_video_thumbnail, get_content, MetaData, TokenPayload},
-    data::{BriefMetaData, FileContent, ListInfo, UploadedImage},
+    agent::{self, generate_thumbnail, generate_video_thumbnail, MetaData, ReencryptResponse, TokenPayload},
+    data::{BriefMetaData, FileContent, ListInfo, Password, UploadedImage},
 };
 use anyhow::{anyhow, Context};
 #[allow(unused_imports)]
@@ -57,7 +57,7 @@ async fn check_with_token(
 async fn check(data: TokenPayload) -> Result<String, NotFound<()>> {
     let name = data.name.clone();
     tokio::spawn(async move {
-        let _ = agent::force_update(&name).await;
+        let _ = agent::force_update(&name, None).await;
     });
     Ok(format!("Hello {} of {}", data.name, data.family))
 }
@@ -65,7 +65,7 @@ async fn check(data: TokenPayload) -> Result<String, NotFound<()>> {
 #[get("/update")]
 async fn update(data: TokenPayload) -> Result<String, NotFound<()>> {
     let now = SystemTime::now();
-    let _ = agent::force_update(&data.name).await;
+    let _ = agent::force_update(&data.name, None).await;
     let json = serde_json::json!(
         {
             "name": data.name,
@@ -73,6 +73,20 @@ async fn update(data: TokenPayload) -> Result<String, NotFound<()>> {
         }
     );
     Ok(json.to_string())
+}
+
+#[post("/reencrypt?<new_password>&<filter>")]
+async fn reencrypt(
+    token: TokenPayload,
+    password: Password,
+    new_password: Option<&str>,
+    filter: Option<&str>,
+) -> Result<Json<ReencryptResponse>, (Status, String)> {
+    let new_pwd = new_password.filter(|p| !p.is_empty());
+    agent::reencrypt(&token.name, filter, password.0.as_deref(), new_pwd)
+        .await
+        .map(Json)
+        .map_err(|e| (Status::InternalServerError, format!("re-encrypt failed: {}", e)))
 }
 
 #[get("/login")]
@@ -113,6 +127,7 @@ async fn everything() -> (Status, &'static str) {
 #[get("/list?<filter>&<sort>&<asc>&<s>&<e>")]
 async fn list(
     data: TokenPayload,
+    password: Password,
     filter: Option<&str>,
     sort: Option<&str>,
     asc: bool,
@@ -123,7 +138,7 @@ async fn list(
         "filter={:?} sort={:?} asc={} range={:?}:{:?}",
         filter, sort, asc, s, e
     );
-    let list = agent::list(&data.name, filter).await;
+    let list = agent::list(&data.name, filter, password.0.as_deref()).await;
     let mut list = list.unwrap_or(Vec::new());
     let s = s.unwrap_or(0);
     let e = e.unwrap_or(list.len());
@@ -148,16 +163,29 @@ async fn list(
 }
 
 #[get("/latest/<n>?<filter>")]
-async fn latest(data: TokenPayload, n: Option<usize>, filter: Option<&str>) -> FileContent {
+async fn latest(
+    data: TokenPayload,
+    password: Password,
+    n: Option<usize>,
+    filter: Option<&str>,
+) -> FileContent {
     let n = n.unwrap_or(0);
-    let mut list = agent::list(&data.name, filter).await.unwrap_or(Vec::new());
+    let mut list = agent::list(&data.name, filter, password.0.as_deref())
+        .await
+        .unwrap_or(Vec::new());
     list.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
     let result = list.get(n);
     match result {
         Some(meta) => FileContent {
             content_type: meta.content_type.to_string(),
             name: meta.filename.to_owned(),
-            body: get_content(&format!("raw/{}/{}", meta.owner, meta.filename)).await,
+            body: agent::get_content_decrypted(
+                &format!("raw/{}/{}", meta.owner, meta.filename),
+                meta.encrypted,
+                password.0.as_deref(),
+                &meta.owner,
+            )
+            .await,
         },
         None => FileContent {
             content_type: "text/plain".to_string(),
@@ -168,8 +196,13 @@ async fn latest(data: TokenPayload, n: Option<usize>, filter: Option<&str>) -> F
 }
 
 #[get("/random?<t>&<filter>")]
-async fn random(data: TokenPayload, t: bool, filter: Option<&str>) -> FileContent {
-    let list = agent::list(&data.name, filter).await;
+async fn random(
+    data: TokenPayload,
+    password: Password,
+    t: bool,
+    filter: Option<&str>,
+) -> FileContent {
+    let list = agent::list(&data.name, filter, password.0.as_deref()).await;
     let list = list.unwrap_or(Vec::new());
     if list.len() == 0 {
         return FileContent {
@@ -181,10 +214,12 @@ async fn random(data: TokenPayload, t: bool, filter: Option<&str>) -> FileConten
     let idx = rand::rng().random_range(0..list.len());
     let item = &list[idx];
     if t {
-        let data = agent::get_content(&format!(
-            "{}/{}/{}",
-            "thumbnail", item.owner, item.thumbnail
-        ))
+        let data = agent::get_content_decrypted(
+            &format!("thumbnail/{}/{}", item.owner, item.thumbnail),
+            item.encrypted,
+            password.0.as_deref(),
+            &item.owner,
+        )
         .await;
         FileContent {
             content_type: match &item.thumbnail_content_type {
@@ -195,7 +230,13 @@ async fn random(data: TokenPayload, t: bool, filter: Option<&str>) -> FileConten
             body: data,
         }
     } else {
-        let data = agent::get_content(&format!("{}/{}/{}", "raw", item.owner, item.filename)).await;
+        let data = agent::get_content_decrypted(
+            &format!("raw/{}/{}", item.owner, item.filename),
+            item.encrypted,
+            password.0.as_deref(),
+            &item.owner,
+        )
+        .await;
         FileContent {
             content_type: item.content_type.clone(),
             name: item.filename.clone(),
@@ -225,7 +266,7 @@ async fn preview_thumbnail(data: Form<UploadedImage<'_>>) -> (ContentType, Vec<u
 }
 
 #[get("/raw/<uuid>")]
-async fn get_raw(uuid: &str, token: TokenPayload) -> FileContent {
+async fn get_raw(uuid: &str, token: TokenPayload, password: Password) -> FileContent {
     let meta = agent::get_meta_by_uuid(&token.name, uuid).await;
     if meta.is_err() {
         return FileContent {
@@ -235,7 +276,13 @@ async fn get_raw(uuid: &str, token: TokenPayload) -> FileContent {
         };
     }
     let meta = meta.unwrap();
-    let data = agent::get_content(&format!("raw/{}/{}", meta.owner, meta.filename)).await;
+    let data = agent::get_content_decrypted(
+        &format!("raw/{}/{}", meta.owner, meta.filename),
+        meta.encrypted,
+        password.0.as_deref(),
+        &meta.owner,
+    )
+    .await;
     if data.is_err() {
         return FileContent {
             content_type: "text/plain".to_owned(),
@@ -252,7 +299,7 @@ async fn get_raw(uuid: &str, token: TokenPayload) -> FileContent {
 }
 
 #[get("/thumbnail/<uuid>")]
-async fn get_thumbnail(uuid: &str, token: TokenPayload) -> FileContent {
+async fn get_thumbnail(uuid: &str, token: TokenPayload, password: Password) -> FileContent {
     let meta = agent::get_meta_by_uuid(&token.name, uuid).await;
     if meta.is_err() {
         return FileContent {
@@ -262,7 +309,13 @@ async fn get_thumbnail(uuid: &str, token: TokenPayload) -> FileContent {
         };
     }
     let meta = meta.unwrap();
-    let data = agent::get_content(&format!("thumbnail/{}/{}", meta.owner, meta.thumbnail)).await;
+    let data = agent::get_content_decrypted(
+        &format!("thumbnail/{}/{}", meta.owner, meta.thumbnail),
+        meta.encrypted,
+        password.0.as_deref(),
+        &meta.owner,
+    )
+    .await;
     if data.is_err() {
         return FileContent {
             content_type: "text/plain".to_owned(),
@@ -283,13 +336,17 @@ async fn get_thumbnail(uuid: &str, token: TokenPayload) -> FileContent {
 }
 
 #[post("/upload", data = "<data>", format = "multipart/form-data")]
-async fn upload(data: Form<UploadedImage<'_>>, token: TokenPayload) -> (Status, String) {
+async fn upload(
+    data: Form<UploadedImage<'_>>,
+    token: TokenPayload,
+    password: Password,
+) -> (Status, String) {
     if data.file.len() == 0 {
         return (Status::NoContent, "empty file".to_string());
     }
     let uuid = uuid::Uuid::new_v4().to_string();
     let mime = data.mime.to_ascii_lowercase();
-    let thumbnail = 
+    let thumbnail =
     if mime.starts_with("image/") {
         generate_thumbnail(data.file).await
     } else if mime.starts_with("video/") {
@@ -303,6 +360,7 @@ async fn upload(data: Form<UploadedImage<'_>>, token: TokenPayload) -> (Status, 
     let thumbnail = thumbnail.unwrap();
     let tags = agent::split_tags(data.tags);
     let extension = data.filename.split_once('.').unwrap_or(("", "")).1;
+    let encrypted = password.0.is_some();
     let meta = MetaData {
         timestamp: chrono::Utc::now().to_rfc3339(),
         content_type: data.mime.to_string(),
@@ -314,6 +372,7 @@ async fn upload(data: Form<UploadedImage<'_>>, token: TokenPayload) -> (Status, 
         size: data.file.len(),
         tags: tags.iter().map(|v| v.to_string()).collect(),
         lower_tags: tags.iter().map(|v| v.to_ascii_lowercase()).collect(),
+        encrypted,
     };
 
     let raw_key = format!("raw/{}/{}", meta.owner, meta.filename);
@@ -321,9 +380,30 @@ async fn upload(data: Form<UploadedImage<'_>>, token: TokenPayload) -> (Status, 
     let meta_key = format!("meta/{}/{}.yml", meta.owner, meta.uuid);
     let meta_raw = serde_yaml::to_string(&meta).unwrap();
     {
-        let u_raw = agent::upload(&raw_key, data.file);
-        let u_thumbnail = agent::upload(&thumbnail_key, &thumbnail.data);
-        let u_meta = agent::upload(&meta_key, meta_raw.as_bytes());
+        let (raw_to_upload, thumb_to_upload, meta_to_upload) =
+            if let Some(ref pwd) = password.0 {
+                let key = crate::agent::crypto::derive_key(pwd, &meta.owner);
+                let enc_raw = crate::agent::crypto::encrypt(data.file, &key);
+                let enc_thumb = crate::agent::crypto::encrypt(&thumbnail.data, &key);
+                let enc_meta = crate::agent::crypto::encrypt(meta_raw.as_bytes(), &key);
+                if enc_raw.is_err() || enc_thumb.is_err() || enc_meta.is_err() {
+                    return (Status::InternalServerError, "encryption failed".to_string());
+                }
+                (
+                    enc_raw.unwrap(),
+                    enc_thumb.unwrap(),
+                    enc_meta.unwrap(),
+                )
+            } else {
+                (
+                    data.file.to_vec(),
+                    thumbnail.data.clone(),
+                    meta_raw.into_bytes(),
+                )
+            };
+        let u_raw = agent::upload(&raw_key, &raw_to_upload);
+        let u_thumbnail = agent::upload(&thumbnail_key, &thumb_to_upload);
+        let u_meta = agent::upload(&meta_key, &meta_to_upload);
 
         let result = future::join_all(vec![u_raw, u_thumbnail, u_meta])
             .await
@@ -388,15 +468,26 @@ pub async fn delete_item(
 }
 
 #[get("/dither?<filter>&<preview>")]
-async fn dither_random(data: TokenPayload, filter: Option<&str>, preview: bool) -> FileContent {
+async fn dither_random(
+    data: TokenPayload,
+    password: Password,
+    filter: Option<&str>,
+    preview: bool,
+) -> FileContent {
     let w = EALBUM_WIDTH.get().unwrap();
     let h = EALBUM_HEIGHT.get().unwrap();
-    let list = agent::list(&data.name, filter).await;
+    let list = agent::list(&data.name, filter, password.0.as_deref()).await;
     let mut list = list.unwrap_or(Vec::new());
     while list.len() > 0 {
         let idx = rand::rng().random_range(0..list.len());
         let item = list.remove(idx);
-        let data = agent::get_content(&format!("{}/{}/{}", "raw", item.owner, item.filename)).await;
+        let data = agent::get_content_decrypted(
+            &format!("raw/{}/{}", item.owner, item.filename),
+            item.encrypted,
+            password.0.as_deref(),
+            &item.owner,
+        )
+        .await;
         if let Ok(data) = data {
             let result = agent::dither(&data, &item.content_type, *w, *h, preview);
             if let Ok(result) = result {
@@ -425,7 +516,12 @@ async fn dither_random(data: TokenPayload, filter: Option<&str>, preview: bool) 
 }
 
 #[get("/dither/<uuid>?<preview>")]
-async fn dither_uuid(data: TokenPayload, uuid: &str, preview: bool) -> FileContent {
+async fn dither_uuid(
+    data: TokenPayload,
+    password: Password,
+    uuid: &str,
+    preview: bool,
+) -> FileContent {
     let w = EALBUM_WIDTH.get().unwrap();
     let h = EALBUM_HEIGHT.get().unwrap();
     let item = agent::get_meta_by_uuid(&data.name, uuid).await;
@@ -437,7 +533,13 @@ async fn dither_uuid(data: TokenPayload, uuid: &str, preview: bool) -> FileConte
         };
     }
     let item = item.unwrap();
-    let data = agent::get_content(&format!("{}/{}/{}", "raw", item.owner, item.filename)).await;
+    let data = agent::get_content_decrypted(
+        &format!("raw/{}/{}", item.owner, item.filename),
+        item.encrypted,
+        password.0.as_deref(),
+        &item.owner,
+    )
+    .await;
     if let Ok(data) = data {
         let result = agent::dither(&data, &item.content_type, *w, *h, preview);
         if let Ok(result) = result {
@@ -521,6 +623,7 @@ pub async fn build(
             dither_random,
             dither_uuid,
             update,
+            reencrypt,
         ],
     ))
 }

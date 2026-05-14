@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onBeforeUnmount, computed, ref, Ref, getCurrentInstance } from 'vue';
+import { onMounted, onBeforeUnmount, computed, inject, ref, Ref, getCurrentInstance } from 'vue';
 import { Meta } from '../lib/struct';
 
 const api = getCurrentInstance()?.appContext.config.globalProperties.$api;
@@ -7,7 +7,14 @@ const props = defineProps<{
     meta: Meta;
 }>();
 const emit = defineEmits<{ end: []; deleted: [uuid: string] }>();
-const img_src = computed(() => `i/raw/${props.meta.uuid}`);
+const password = inject<Ref<string>>('password', ref(''));
+const img_src = computed(() => {
+    let url = `i/raw/${props.meta.uuid}`;
+    if (password.value) {
+        url += `?pwd=${encodeURIComponent(password.value)}`;
+    }
+    return url;
+});
 let delete_code: Ref<string | null> = ref(null);
 let is_hold_on = ref(true);
 let timer: ReturnType<typeof setTimeout> | number = 0;

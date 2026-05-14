@@ -1,3 +1,4 @@
+pub mod crypto;
 mod misc;
 mod validation;
 mod img;

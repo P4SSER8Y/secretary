@@ -33,6 +33,8 @@ pub struct MetaData {
     pub tags: Vec<String>,
     #[serde(skip_serializing, skip_deserializing)]
     pub lower_tags: Vec<String>,
+    #[serde(default)]
+    pub encrypted: bool,
 }
 
 impl PartialEq for MetaData {
@@ -49,12 +51,27 @@ impl std::hash::Hash for MetaData {
 
 impl Eq for MetaData {}
 
+#[derive(Serialize, Debug)]
+#[serde(crate = "rocket::serde")]
+pub struct ReencryptResponse {
+    pub processed: usize,
+    pub errors: Vec<ReencryptError>,
+}
+
+#[derive(Serialize, Debug)]
+#[serde(crate = "rocket::serde")]
+pub struct ReencryptError {
+    pub uuid: String,
+    pub error: String,
+}
+
 static BUCKET: OnceLock<Box<s3::Bucket>> = OnceLock::new();
 static HIDE: OnceLock<Vec<String>> = OnceLock::new();
 
 type UuidToMetaListT = HashMap<String, Arc<MetaData>>;
 type OwnerToUuidListT = HashMap<String, UuidToMetaListT>;
 static META_BUFFERS: OnceLock<RwLock<OwnerToUuidListT>> = OnceLock::new();
+static LAST_KEY_HASH: OnceLock<RwLock<HashMap<String, [u8; 8]>>> = OnceLock::new();
 
 pub fn split_tags(tags: Option<&str>) -> Vec<&str> {
     tags.unwrap_or("")
@@ -67,13 +84,25 @@ pub fn split_tags(tags: Option<&str>) -> Vec<&str> {
 }
 
 #[cfg(feature = "avif")]
-pub async fn format_into_avif(src: Arc<MetaData>) -> Result<()> {
-    async fn wtf(path: &str, mime: Option<&str>) -> Result<RawImage<'static>> {
+pub async fn format_into_avif(src: Arc<MetaData>, key: Option<&[u8; 32]>) -> Result<()> {
+    async fn convert(
+        path: &str,
+        mime: Option<&str>,
+        encrypted: bool,
+        key: Option<&[u8; 32]>,
+        owner: &str,
+    ) -> Result<RawImage<'static>> {
         if mime.unwrap_or("").to_ascii_lowercase() == "image/avif" {
             return Err(anyhow!("already avif"));
         }
         info!("format {}", path);
         let raw = get_content(path).await?;
+        let raw = if encrypted {
+            let k = key.ok_or_else(|| anyhow!("encrypted but no key for avif conversion"))?;
+            super::crypto::decrypt(&raw, k)?
+        } else {
+            raw
+        };
         let raw_len = raw.len();
         let ts = std::time::SystemTime::now();
         let compressed = tokio::task::spawn_blocking(move || img::convert_to_avif(&raw)).await??;
@@ -88,10 +117,16 @@ pub async fn format_into_avif(src: Arc<MetaData>) -> Result<()> {
         );
         Ok(compressed)
     }
-    async fn update_meta(meta: MetaData) -> Result<()> {
+    async fn update_meta(meta: MetaData, encrypted: bool, key: Option<&[u8; 32]>) -> Result<()> {
+        let meta_bytes = serde_yaml::to_string(&meta)?.into_bytes();
+        let to_upload: Vec<u8> = if encrypted {
+            super::crypto::encrypt(&meta_bytes, key.unwrap())?
+        } else {
+            meta_bytes
+        };
         let _ = upload(
             &format!("meta/{}/{}.yml", meta.owner, meta.uuid),
-            serde_yaml::to_string(&meta)?.as_bytes(),
+            &to_upload,
         )
         .await?;
 
@@ -105,40 +140,63 @@ pub async fn format_into_avif(src: Arc<MetaData>) -> Result<()> {
             .insert(meta.uuid.to_ascii_lowercase(), Arc::new(meta));
         Ok(())
     }
+    async fn upload_avif(
+        path: &str,
+        data: &[u8],
+        encrypted: bool,
+        key: Option<&[u8; 32]>,
+    ) -> Result<()> {
+        let to_upload: Vec<u8> = if encrypted {
+            super::crypto::encrypt(data, key.unwrap())?
+        } else {
+            data.to_vec()
+        };
+        upload(path, &to_upload).await
+    }
 
     let mut meta = MetaData::clone(&src);
-    let thumbnail = wtf(
+    let thumbnail = convert(
         &format!("thumbnail/{}/{}", meta.owner, meta.thumbnail),
         meta.thumbnail_content_type.as_deref(),
+        src.encrypted,
+        key,
+        &meta.owner,
     )
     .await;
     if let Ok(result) = thumbnail {
         meta.thumbnail = format!("{}.{}", meta.uuid, result.extension);
         meta.thumbnail_content_type = Some(result.mime_type.to_string());
-        let _ = upload(
+        let _ = upload_avif(
             &format!("thumbnail/{}/{}", meta.owner, meta.thumbnail),
             &result.data,
+            src.encrypted,
+            key,
         )
         .await?;
-        update_meta(meta.clone()).await?;
+        update_meta(meta.clone(), src.encrypted, key).await?;
         if meta.thumbnail != src.thumbnail {
             remove(&format!("thumbnail/{}/{}", src.owner, src.thumbnail)).await?;
         }
     }
-    let raw = wtf(
+    let raw = convert(
         &format!("raw/{}/{}", meta.owner, meta.filename),
         Some(&meta.content_type),
+        src.encrypted,
+        key,
+        &meta.owner,
     )
     .await;
     if let Ok(result) = raw {
         meta.filename = format!("{}.{}", meta.uuid, result.extension);
         meta.content_type = result.mime_type.to_string();
-        let _ = upload(
+        let _ = upload_avif(
             &format!("raw/{}/{}", meta.owner, meta.filename),
             &result.data,
+            src.encrypted,
+            key,
         )
         .await?;
-        update_meta(meta.clone()).await?;
+        update_meta(meta.clone(), src.encrypted, key).await?;
         if meta.filename != src.filename {
             remove(&format!("raw/{}/{}", src.owner, src.filename)).await?;
         }
@@ -168,26 +226,71 @@ pub async fn get_content(path: &str) -> Result<Vec<u8>> {
     Ok(data.to_vec())
 }
 
-async fn full_update(name: &str) -> Result<()> {
-    async fn update_one(bucket: &Box<Bucket>, key: String, name: &str) -> Result<usize> {
-        let data = bucket.get_object(key.clone()).await?;
-        let data = serde_yaml::from_slice::<MetaData>(data.as_slice());
-        if data.is_err() {
-            log::error!("cannot parse {}", key);
-            return Err(anyhow!("cannot parse {}", key));
+pub async fn get_content_decrypted(
+    s3_path: &str,
+    encrypted: bool,
+    password: Option<&str>,
+    owner: &str,
+) -> Result<Vec<u8>> {
+    let data = get_content(s3_path).await?;
+    if encrypted {
+        let pwd = password.ok_or_else(|| anyhow!("password required for encrypted content"))?;
+        let key = super::crypto::derive_key(pwd, owner);
+        super::crypto::decrypt(&data, &key)
+    } else {
+        Ok(data)
+    }
+}
+
+async fn full_update(name: &str, key: Option<&[u8; 32]>) -> Result<()> {
+    async fn update_one(
+        bucket: &Box<Bucket>,
+        s3_key: String,
+        name: &str,
+        aes_key: Option<&[u8; 32]>,
+    ) -> Result<usize> {
+        let raw = bucket.get_object(s3_key.clone()).await?;
+        let raw_bytes = raw.as_slice();
+
+        if super::crypto::is_encrypted(raw_bytes) {
+            let k = aes_key.ok_or_else(|| anyhow!("skipped encrypted {}", s3_key))?;
+            let decrypted = super::crypto::decrypt(raw_bytes, k).map_err(|e| {
+                log::warn!("decrypt failed for {}: {}", s3_key, e);
+                anyhow!("decrypt failed")
+            })?;
+            let meta = serde_yaml::from_slice::<MetaData>(&decrypted).map_err(|e| {
+                log::warn!("parse decrypted {} failed: {}", s3_key, e);
+                anyhow!("parse failed")
+            })?;
+            let mut meta = meta;
+            meta.owner = name.to_string();
+            meta.lower_tags = meta
+                .tags
+                .iter()
+                .map(|t| t.trim().to_ascii_lowercase())
+                .collect();
+            let result = insert(Arc::new(meta)).await?;
+            Ok(result)
+        } else if aes_key.is_some() {
+            Err(anyhow!("skipped plaintext {}", s3_key))
+        } else {
+            let meta = serde_yaml::from_slice::<MetaData>(raw_bytes).map_err(|e| {
+                log::warn!("parse {} failed: {}", s3_key, e);
+                anyhow!("parse failed")
+            })?;
+            let mut meta = meta;
+            meta.owner = name.to_string();
+            meta.lower_tags = meta
+                .tags
+                .iter()
+                .map(|t| t.trim().to_ascii_lowercase())
+                .collect();
+            let result = insert(Arc::new(meta)).await?;
+            Ok(result)
         }
-        let mut meta = data.unwrap();
-        meta.owner = name.to_string();
-        meta.lower_tags = meta
-            .tags
-            .iter()
-            .map(|t| t.trim().to_ascii_lowercase())
-            .collect();
-        let result = insert(Arc::new(meta)).await?;
-        Ok(result)
     }
     #[cfg(feature = "avif")]
-    async fn format_all(name: String) -> Result<()> {
+    async fn format_all(name: String, key: Option<[u8; 32]>) -> Result<()> {
         let buffer = META_BUFFERS
             .get()
             .with_context(|| anyhow!("META_BUFFERS not set"))?;
@@ -195,7 +298,7 @@ async fn full_update(name: &str) -> Result<()> {
         let data = buffer.get(&name).unwrap().clone();
         drop(buffer);
         for (_, item) in data {
-            let _ = format_into_avif(item).await;
+            let _ = format_into_avif(item, key.as_ref()).await;
         }
         Ok(())
     }
@@ -205,7 +308,7 @@ async fn full_update(name: &str) -> Result<()> {
     let mut results = Vec::new();
     for list in list {
         for object in list.contents {
-            results.push(update_one(bucket, object.key, name));
+            results.push(update_one(bucket, object.key, name, key));
         }
     }
     let todo_result = join_all(results).await;
@@ -215,15 +318,18 @@ async fn full_update(name: &str) -> Result<()> {
     {
         info!("finish update buffer for {}", name);
         #[cfg(feature = "avif")]
-        tokio::spawn(format_all(name.to_string()));
+        if let Some(k) = key {
+            tokio::spawn(format_all(name.to_string(), Some(*k)));
+        }
         Ok(())
     } else {
         Err(anyhow!("no such name: {}", name))
     }
 }
 
-pub async fn force_update(name: &str) -> Result<()> {
+pub async fn force_update(name: &str, password: Option<&str>) -> Result<()> {
     static LOCK: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+    let key: Option<[u8; 32]> = password.map(|p| super::crypto::derive_key(p, name));
     let mut updating = false;
     {
         let set = LOCK.get_or_init(|| Mutex::new(HashSet::new())).lock().await;
@@ -248,7 +354,7 @@ pub async fn force_update(name: &str) -> Result<()> {
         let mut set = LOCK.get_or_init(|| Mutex::new(HashSet::new())).lock().await;
         set.insert(name.to_string());
     }
-    let t = full_update(name).await;
+    let t = full_update(name, key.as_ref()).await;
     if t.is_err() {
         log::error!("update {} failed: {:?}", name, t);
     }
@@ -268,7 +374,7 @@ async fn update(name: &str) -> Result<()> {
     match !buffer.contains_key(name) {
         true => {
             drop(buffer);
-            force_update(name).await
+            force_update(name, None).await
         }
         false => Ok(()),
     }
@@ -289,11 +395,34 @@ pub async fn get_meta_by_uuid(name: &str, uuid: &str) -> Result<Arc<MetaData>> {
     Ok(buffer.clone())
 }
 
-pub async fn list(name: &str, filter: Option<&str>) -> Result<Vec<Arc<MetaData>>> {
+pub async fn list(
+    name: &str,
+    filter: Option<&str>,
+    password: Option<&str>,
+) -> Result<Vec<Arc<MetaData>>> {
+    if let Some(pwd) = password {
+        let key = super::crypto::derive_key(pwd, name);
+        let key_hash: [u8; 8] = key[..8].try_into().unwrap();
+        let hash_map = LAST_KEY_HASH
+            .get_or_init(|| RwLock::new(HashMap::new()))
+            .read()
+            .await;
+        if hash_map.get(name) != Some(&key_hash) {
+            drop(hash_map);
+            force_update(name, Some(pwd)).await?;
+            LAST_KEY_HASH
+                .get()
+                .unwrap()
+                .write()
+                .await
+                .insert(name.to_string(), key_hash);
+        }
+    } else {
+        let _ = update(name).await;
+    }
     let buffer = META_BUFFERS
         .get()
         .with_context(|| anyhow!("BUFFERS not set"))?;
-    let _ = update(name).await;
     let buffer = buffer.read().await;
     let buffer = buffer.get(name);
     if buffer.is_none() {
@@ -361,6 +490,123 @@ pub async fn remove_meta(meta: Arc<MetaData>) -> anyhow::Result<()> {
         format!("thumbnail/{}/{}", meta.owner, meta.thumbnail),
     ];
     join_all(keys.iter().map(|key| remove(key))).await;
+
+    Ok(())
+}
+
+pub async fn reencrypt(
+    name: &str,
+    filter: Option<&str>,
+    old_password: Option<&str>,
+    new_password: Option<&str>,
+) -> Result<ReencryptResponse> {
+    let list = list(name, filter, old_password).await?;
+    let old_key: Option<[u8; 32]> = old_password.map(|p| super::crypto::derive_key(p, name));
+    let new_key: Option<[u8; 32]> = new_password.map(|p| super::crypto::derive_key(p, name));
+    let mut processed = 0usize;
+    let mut errors = Vec::new();
+
+    for item in &list {
+        let uuid = item.uuid.clone();
+        match reencrypt_one(item, &old_key, new_key.as_ref()).await {
+            Ok(()) => processed += 1,
+            Err(e) => errors.push(ReencryptError {
+                uuid,
+                error: format!("{}", e),
+            }),
+        }
+    }
+
+    if processed > 0 {
+        if let Some(ref nk) = new_key {
+            let new_key_hash: [u8; 8] = nk[..8].try_into().unwrap();
+            LAST_KEY_HASH
+                .get()
+                .unwrap()
+                .write()
+                .await
+                .insert(name.to_string(), new_key_hash);
+        }
+    }
+
+    Ok(ReencryptResponse { processed, errors })
+}
+
+async fn reencrypt_one(
+    item: &MetaData,
+    old_key: &Option<[u8; 32]>,
+    new_key: Option<&[u8; 32]>,
+) -> Result<()> {
+    let was_encrypted = item.encrypted;
+    let meta_key = format!("meta/{}/{}.yml", item.owner, item.uuid);
+    let raw_key = format!("raw/{}/{}", item.owner, item.filename);
+    let thumb_key = format!("thumbnail/{}/{}", item.owner, item.thumbnail);
+
+    // Fetch and update meta
+    let meta_bytes = get_content(&meta_key).await?;
+    let mut meta: MetaData = if super::crypto::is_encrypted(&meta_bytes) {
+        let k = old_key
+            .as_ref()
+            .ok_or_else(|| anyhow!("encrypted meta but no old password"))?;
+        let decrypted = super::crypto::decrypt(&meta_bytes, k)?;
+        serde_yaml::from_slice(&decrypted)?
+    } else {
+        serde_yaml::from_slice(&meta_bytes)?
+    };
+
+    // Fetch and process raw
+    let raw_bytes = get_content(&raw_key).await?;
+    let raw_plain = if was_encrypted {
+        let k = old_key
+            .as_ref()
+            .ok_or_else(|| anyhow!("encrypted raw but no old password"))?;
+        super::crypto::decrypt(&raw_bytes, k)?
+    } else {
+        raw_bytes
+    };
+    let raw_to_upload = if let Some(nk) = new_key {
+        meta.encrypted = true;
+        super::crypto::encrypt(&raw_plain, nk)?
+    } else {
+        meta.encrypted = false;
+        raw_plain
+    };
+    upload(&raw_key, &raw_to_upload).await?;
+
+    // Fetch and process thumbnail
+    let thumb_bytes = get_content(&thumb_key).await?;
+    let thumb_plain = if was_encrypted {
+        let k = old_key
+            .as_ref()
+            .ok_or_else(|| anyhow!("encrypted thumbnail but no old password"))?;
+        super::crypto::decrypt(&thumb_bytes, k)?
+    } else {
+        thumb_bytes
+    };
+    let thumb_to_upload = if let Some(nk) = new_key {
+        super::crypto::encrypt(&thumb_plain, nk)?
+    } else {
+        thumb_plain
+    };
+    upload(&thumb_key, &thumb_to_upload).await?;
+
+    // Upload updated meta
+    let meta_yaml = serde_yaml::to_string(&meta)?;
+    let meta_to_upload = if let Some(nk) = new_key {
+        super::crypto::encrypt(meta_yaml.as_bytes(), nk)?
+    } else {
+        meta_yaml.into_bytes()
+    };
+    upload(&meta_key, &meta_to_upload).await?;
+
+    // Update in-memory buffer
+    let buffer = META_BUFFERS
+        .get()
+        .with_context(|| anyhow!("META_BUFFERS not set"))?;
+    let mut buffer = buffer.write().await;
+    if let Some(map) = buffer.get_mut(&meta.owner) {
+        map.insert(meta.uuid.to_ascii_lowercase(), Arc::new(meta));
+    }
 
     Ok(())
 }
@@ -438,6 +684,7 @@ pub async fn init(config: &Figment) -> anyhow::Result<()> {
     let bucket = Bucket::new(&bucket, region, credentials)?.with_path_style();
     BUCKET.get_or_init(|| bucket);
     META_BUFFERS.get_or_init(|| RwLock::new(HashMap::new()));
+    LAST_KEY_HASH.get_or_init(|| RwLock::new(HashMap::new()));
 
     HIDE.get_or_init(|| hide.iter().map(|s| s.trim().to_ascii_lowercase()).collect());
 

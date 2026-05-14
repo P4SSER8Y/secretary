@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, inject, ref, watch, type Ref } from 'vue';
 import { MemeList } from '../lib/struct';
 import { storeToRefs } from 'pinia';
 import { useConfigStore } from '../lib/configStore';
@@ -15,6 +15,15 @@ const props = defineProps<{
 const emits = defineEmits<{ show: [meta: Meta] }>();
 const config = useConfigStore();
 const { waterfall_pagnition } = storeToRefs(config);
+const password = inject<Ref<string>>('password', ref(''));
+
+function thumbnail_src(uuid: string) {
+    let url = `i/thumbnail/${uuid}`;
+    if (password.value) {
+        url += `?pwd=${encodeURIComponent(password.value)}`;
+    }
+    return url;
+}
 
 let min_idx = ref(0);
 let cols = computed(() => {
@@ -64,7 +73,7 @@ function previous() {
                         :data-tip="item.tags?.join('/') ?? 'wtf'"
                         @click="() => $emit('show', item)"
                         >
-                        <img :src="'i/thumbnail/' + item.uuid" class="rounded-xl" />
+                        <img :src="thumbnail_src(item.uuid)" class="rounded-xl" />
                 </div>
             </div>
         </wc-waterfall>

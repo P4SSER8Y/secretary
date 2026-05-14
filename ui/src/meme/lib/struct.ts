@@ -3,6 +3,7 @@ export interface Meta {
     mime: string;
     timestamp?: string;
     tags?: string[];
+    encrypted?: boolean;
 }
 
 export interface MemeList {
@@ -29,4 +30,14 @@ export interface TokenPayload {
     n: string;
     f: string;
     exp: number;
+}
+
+export interface ReencryptError {
+    uuid: string;
+    error: string;
+}
+
+export interface ReencryptResponse {
+    processed: number;
+    errors: ReencryptError[];
 }

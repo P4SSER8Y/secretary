@@ -92,6 +92,26 @@ impl<'r, 'o: 'r> Responder<'r, 'o> for FileContent {
     }
 }
 
+pub struct Password(pub Option<String>);
+
+#[rocket::async_trait]
+impl<'a> FromRequest<'a> for Password {
+    type Error = ();
+
+    async fn from_request(request: &'a Request<'_>) -> Outcome<Self, Self::Error> {
+        if let Some(password) = request.headers().get_one("password") {
+            return Outcome::Success(Password(Some(password.to_string())));
+        }
+        if let Some(Ok(password)) = request.query_value::<&str>("pwd") {
+            return Outcome::Success(Password(Some(password.to_string())));
+        }
+        if let Some(cookie) = request.cookies().get("password") {
+            return Outcome::Success(Password(Some(cookie.value().to_string())));
+        }
+        Outcome::Success(Password(None))
+    }
+}
+
 #[derive(FromForm)]
 pub struct UploadedImage<'r> {
     pub file: &'r [u8],
@@ -106,6 +126,7 @@ pub struct BriefMetaData {
     pub timestamp: String,
     pub mime: String,
     pub tags: Vec<String>,
+    pub encrypted: bool,
 }
 
 impl From<&MetaData> for BriefMetaData {
@@ -117,6 +138,7 @@ impl From<&MetaData> for BriefMetaData {
             timestamp: meta.timestamp.clone(),
             mime: meta.content_type.clone(),
             tags: tags,
+            encrypted: meta.encrypted,
         }
     }
 }
@@ -125,3 +147,4 @@ impl From<&MetaData> for BriefMetaData {
 pub struct ListInfo {
     pub meta: Vec<BriefMetaData>,
 }
+

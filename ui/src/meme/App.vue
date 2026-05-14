@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, getCurrentInstance, onMounted, Ref, ref, watch } from 'vue';
+import { computed, getCurrentInstance, onMounted, provide, Ref, ref, watch } from 'vue';
 import Waterfall from './pages/Waterfall.vue';
 import Gallery from './pages/Gallery.vue';
 import { raven } from './raven';
@@ -10,6 +10,7 @@ import { storeToRefs } from 'pinia';
 import Upload from './pages/Upload.vue';
 import FullScreenPreview from './pages/FullScreenPreview.vue';
 import TagCloud from './pages/TagCloud.vue';
+import ReencryptDialog from './pages/ReencryptDialog.vue';
 
 const HODOR_ENTRY = import.meta.env.VITE_HODOR_ENTRY;
 const config = useConfigStore();
@@ -32,6 +33,9 @@ let sort = ref(SortKey.timestamp);
 let is_randomized = ref(true);
 let single_preview: Ref<Meta | null> = ref(null);
 let is_tag_cloud_shown = ref(false);
+let reencrypt_shown = ref(false);
+let password: Ref<string> = ref('');
+provide('password', password);
 
 const update = debounce(async function update() {
     if (!token.value) {
@@ -141,12 +145,22 @@ watch(token, (newVal) => {
 
 watch([filter, is_asc, sort, is_randomized], update);
 
+watch(password, (newVal) => {
+    if (newVal) {
+        sessionStorage.setItem('password', newVal);
+    } else {
+        sessionStorage.removeItem('password');
+    }
+    update();
+});
+
 onMounted(() => {
     token.value =
         document.cookie
             .split(';')
             .find((c) => c.trim().startsWith('token='))
             ?.split('=')[1] ?? null;
+    password.value = sessionStorage.getItem('password') ?? '';
 });
 </script>
 
@@ -183,6 +197,19 @@ onMounted(() => {
                                 update
                                 <span v-if="force_update_cost" class="font-mono"> {{ force_update_cost }}s </span>
                             </a>
+                        </li>
+                        <li>
+                            <a @click="reencrypt_shown = true">re-encrypt</a>
+                        </li>
+                        <li>
+                            <div class="px-2 py-1">
+                                <input
+                                    type="password"
+                                    placeholder="vault password"
+                                    class="input input-ghost input-xs w-full"
+                                    v-model="password"
+                                />
+                            </div>
                         </li>
                     </ul>
                 </li>
@@ -271,6 +298,10 @@ onMounted(() => {
     </FullScreenPreview>
     <TagCloud v-if="is_tag_cloud_shown" :data="data" @commit="commit_filter" @quit="is_tag_cloud_shown = false">
     </TagCloud>
+    <ReencryptDialog v-if="reencrypt_shown" :filter="filter" :password="password"
+        @quit="reencrypt_shown = false"
+        @done="(newPwd: string) => { password = newPwd; reencrypt_shown = false; }">
+    </ReencryptDialog>
 </template>
 
 <style scoped lang="postcss">

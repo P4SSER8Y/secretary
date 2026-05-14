@@ -1,10 +1,26 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, inject, onMounted, ref, watch, type Ref } from 'vue';
 import { MemeList } from '../lib/struct';
 
 const props = defineProps<{
     data: MemeList | null;
 }>();
+const password = inject<Ref<string>>('password', ref(''));
+
+function raw_src(uuid: string) {
+    let url = `i/raw/${uuid}`;
+    if (password.value) {
+        url += `?pwd=${encodeURIComponent(password.value)}`;
+    }
+    return url;
+}
+function thumbnail_src(uuid: string) {
+    let url = `i/thumbnail/${uuid}`;
+    if (password.value) {
+        url += `?pwd=${encodeURIComponent(password.value)}`;
+    }
+    return url;
+}
 
 let index = ref(0);
 let idx_random = ref(0);
@@ -15,23 +31,19 @@ function is_img_valid(idx: number) {
     return props.data && idx >= 0 && idx < props.data.meta.length;
 }
 
-function get_img_src(idx: number) {
-    return is_img_valid(idx) ? 'i/raw/' + props.data!.meta[idx].uuid : '';
-}
-
 function get_img_mime(idx: number) {
     return is_img_valid(idx) ? props.data!.meta[idx].mime : '';
 }
 
 let img_center_valid = computed(() => is_img_valid(index.value));
 
-let img_center_src = computed(() => get_img_src(index.value));
-let img_random_src = computed(() => get_img_src(idx_random.value));
-let img_next_src = computed(() => get_img_src(idx_next.value));
-let img_previous_src = computed(() => get_img_src(idx_previous.value));
+let img_center_src = computed(() => raw_src(props.data!.meta[index.value]?.uuid ?? ''));
+let img_random_src = computed(() => raw_src(props.data!.meta[idx_random.value]?.uuid ?? ''));
+let img_next_src = computed(() => raw_src(props.data!.meta[idx_next.value]?.uuid ?? ''));
+let img_previous_src = computed(() => raw_src(props.data!.meta[idx_previous.value]?.uuid ?? ''));
 
 let img_center_mime = computed(() => get_img_mime(index.value));
-let video_center_thumbnail_src = computed(() => is_img_valid(index.value) ? 'i/thumbnail/' + props.data!.meta[index.value].uuid : '');
+let video_center_thumbnail_src = computed(() => is_img_valid(index.value) ? thumbnail_src(props.data!.meta[index.value].uuid) : '');
 
 function next() {
     idx_previous.value = index.value;
