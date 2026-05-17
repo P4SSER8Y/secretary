@@ -75,6 +75,7 @@ const update = debounce(async function update() {
 const force_update_cost: Ref<string | null> = ref(null);
 const force_update = debounce(function () {
     if (token.value) {
+        data.value = null;
         force_update_cost.value = "0.00";
         let now = new Date().getTime();
         let timer_id = setInterval(() => {
@@ -150,6 +151,7 @@ watch(password, (newVal) => {
         sessionStorage.setItem('password', newVal);
     } else {
         sessionStorage.removeItem('password');
+        force_update();
     }
 });
 
@@ -159,7 +161,7 @@ onMounted(() => {
             .split(';')
             .find((c) => c.trim().startsWith('token='))
             ?.split('=')[1] ?? null;
-    password.value = sessionStorage.getItem('password') ?? '';
+    sessionStorage.removeItem('password');
 });
 </script>
 
@@ -207,7 +209,8 @@ onMounted(() => {
                                     placeholder="vault password"
                                     class="input input-ghost input-xs w-full"
                                     v-model="password"
-                                    @keyup.enter="update()"
+                                    @keyup.enter="force_update()"
+                                    @blur="force_update()"
                                 />
                             </div>
                         </li>

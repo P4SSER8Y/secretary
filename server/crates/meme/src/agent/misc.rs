@@ -6,7 +6,7 @@ use rocket::{
     futures::future::join_all,
     tokio::{
         self,
-        sync::{Mutex, RwLock},
+        sync::{Mutex, RwLock, Semaphore},
     },
 };
 use s3::Bucket;
@@ -66,6 +66,7 @@ pub struct ReencryptError {
 }
 
 static BUCKET: OnceLock<Box<s3::Bucket>> = OnceLock::new();
+static S3_SEMAPHORE: OnceLock<Arc<Semaphore>> = OnceLock::new();
 static HIDE: OnceLock<Vec<String>> = OnceLock::new();
 
 type UuidToMetaListT = HashMap<String, Arc<MetaData>>;
@@ -249,19 +250,20 @@ async fn full_update(name: &str, key: Option<&[u8; 32]>) -> Result<()> {
         name: &str,
         aes_key: Option<&[u8; 32]>,
     ) -> Result<usize> {
+        let _permit = S3_SEMAPHORE
+            .get()
+            .with_context(|| anyhow!("S3_SEMAPHORE not set"))?
+            .acquire()
+            .await;
         let raw = bucket.get_object(s3_key.clone()).await?;
         let raw_bytes = raw.as_slice();
 
         if super::crypto::is_encrypted(raw_bytes) {
             let k = aes_key.ok_or_else(|| anyhow!("skipped encrypted {}", s3_key))?;
-            let decrypted = super::crypto::decrypt(raw_bytes, k).map_err(|e| {
-                log::warn!("decrypt failed for {}: {}", s3_key, e);
-                anyhow!("decrypt failed")
-            })?;
-            let meta = serde_yaml::from_slice::<MetaData>(&decrypted).map_err(|e| {
-                log::warn!("parse decrypted {} failed: {}", s3_key, e);
-                anyhow!("parse failed")
-            })?;
+            let decrypted = super::crypto::decrypt(raw_bytes, k)
+                .map_err(|_| anyhow!("decrypt failed"))?;
+            let meta = serde_yaml::from_slice::<MetaData>(&decrypted)
+                .map_err(|_| anyhow!("parse failed"))?;
             let mut meta = meta;
             meta.owner = name.to_string();
             meta.lower_tags = meta
@@ -350,8 +352,8 @@ pub async fn force_update(name: &str, password: Option<&str>) -> Result<()> {
             {
                 let set = LOCK.get_or_init(|| Mutex::new(HashSet::new())).lock().await;
                 if !set.contains(name) {
-                    info!("updated buffer for {}", name);
-                    return Ok(());
+                    info!("waited buffer for {}", name);
+                    break;
                 }
             }
         }
@@ -495,7 +497,15 @@ pub async fn remove_meta(meta: Arc<MetaData>) -> anyhow::Result<()> {
         format!("raw/{}/{}", meta.owner, meta.filename),
         format!("thumbnail/{}/{}", meta.owner, meta.thumbnail),
     ];
-    join_all(keys.iter().map(|key| remove(key))).await;
+    join_all(keys.iter().map(|key| async {
+        let _permit = S3_SEMAPHORE
+            .get()
+            .with_context(|| anyhow!("S3_SEMAPHORE not set"))?
+            .acquire()
+            .await;
+        remove(key).await
+    }))
+    .await;
 
     Ok(())
 }
@@ -689,6 +699,13 @@ pub async fn init(config: &Figment) -> anyhow::Result<()> {
 
     let bucket = Bucket::new(&bucket, region, credentials)?.with_path_style();
     BUCKET.get_or_init(|| bucket);
+    let s3_concurrency: usize = config
+        .find_value("meme.s3_concurrency")
+        .ok()
+        .and_then(|v| v.to_u128())
+        .and_then(|v| usize::try_from(v).ok())
+        .unwrap_or(16);
+    S3_SEMAPHORE.get_or_init(|| Arc::new(Semaphore::new(s3_concurrency)));
     META_BUFFERS.get_or_init(|| RwLock::new(HashMap::new()));
     LAST_KEY_HASH.get_or_init(|| RwLock::new(HashMap::new()));
 

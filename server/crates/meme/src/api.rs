@@ -63,9 +63,9 @@ async fn check(data: TokenPayload) -> Result<String, NotFound<()>> {
 }
 
 #[get("/update")]
-async fn update(data: TokenPayload) -> Result<String, NotFound<()>> {
+async fn update(data: TokenPayload, password: Password) -> Result<String, NotFound<()>> {
     let now = SystemTime::now();
-    let _ = agent::force_update(&data.name, None).await;
+    let _ = agent::force_update(&data.name, password.0.as_deref()).await;
     let json = serde_json::json!(
         {
             "name": data.name,
