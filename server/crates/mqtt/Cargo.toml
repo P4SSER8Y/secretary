@@ -1,0 +1,11 @@
+[package]
+name = "mqtt"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+log = "0.4.20"
+once_cell = "1.19.0"
+rumqttc = "0.24.0"
+serde = { version = "1.0.195", features = ["derive"] }
+serde_json = "1.0.111"

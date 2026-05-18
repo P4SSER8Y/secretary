@@ -22,9 +22,17 @@ meme = true
 
 [default.kindle]
 style = "<0,1,2>"
+device_name = "kindle"
 fonts.main = ""
 fonts.weather = ""
 fonts.status = ""
+
+[default.mqtt]
+host = ""
+port = 1883
+username = ""
+password = ""
+client_id = "secretary"
 
 [default.weather]
 cron = "" # second minute hour day month day_of_week year
