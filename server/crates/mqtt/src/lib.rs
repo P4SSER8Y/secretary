@@ -17,6 +17,7 @@ pub struct HassDeviceConfig {
     pub name: String,
     pub device_id: String,
     pub state_topic: String,
+    pub availability_topic: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -52,7 +53,7 @@ pub fn init(config: MqttConfig) {
 }
 
 pub fn publish_discovery(config: &HassDeviceConfig) {
-    let battery_config = serde_json::json!({
+    let mut battery_config = serde_json::json!({
         "name": format!("{} Battery", config.name),
         "device_class": "battery",
         "state_topic": config.state_topic,
@@ -64,13 +65,16 @@ pub fn publish_discovery(config: &HassDeviceConfig) {
             "identifiers": [config.device_id]
         }
     });
+    if let Some(ref topic) = config.availability_topic {
+        battery_config["availability_topic"] = serde_json::json!(topic);
+    }
     let topic = format!(
         "homeassistant/sensor/{}/battery/config",
         config.device_id
     );
-    publish(&topic, &battery_config.to_string());
+    publish(&topic, &battery_config.to_string(), true);
 
-    let last_seen_config = serde_json::json!({
+    let mut last_seen_config = serde_json::json!({
         "name": format!("{} Last Seen", config.name),
         "device_class": "timestamp",
         "state_topic": config.state_topic,
@@ -81,11 +85,14 @@ pub fn publish_discovery(config: &HassDeviceConfig) {
             "identifiers": [config.device_id]
         }
     });
+    if let Some(ref topic) = config.availability_topic {
+        last_seen_config["availability_topic"] = serde_json::json!(topic);
+    }
     let topic = format!(
         "homeassistant/sensor/{}/last_seen/config",
         config.device_id
     );
-    publish(&topic, &last_seen_config.to_string());
+    publish(&topic, &last_seen_config.to_string(), true);
 }
 
 pub fn publish_state(device_id: &str, battery: Option<usize>, last_seen: &str) {
@@ -94,14 +101,22 @@ pub fn publish_state(device_id: &str, battery: Option<usize>, last_seen: &str) {
         last_seen: last_seen.to_string(),
     };
     if let Ok(payload) = serde_json::to_string(&state) {
-        publish(&format!("secretary/{}/state", device_id), &payload);
+        publish(&format!("secretary/{}/state", device_id), &payload, true);
     }
 }
 
-fn publish(topic: &str, payload: &str) {
+fn publish(topic: &str, payload: &str, retain: bool) {
     if let Some(client) = client() {
-        if let Err(e) = client.publish(topic, QoS::AtMostOnce, false, payload) {
+        if let Err(e) = client.publish(topic, QoS::AtMostOnce, retain, payload) {
             log::error!("mqtt publish failed: {}", e);
         }
     }
+}
+
+pub fn publish_availability(device_id: &str, status: &str) {
+    publish(
+        &format!("secretary/{}/availability", device_id),
+        status,
+        true,
+    );
 }

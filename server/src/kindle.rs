@@ -40,14 +40,17 @@ pub fn build(base: &'static str, build: Rocket<Build>, config: &Figment) -> Rock
         .unwrap_or_else(|| "kindle".to_string());
     let device_id = device_name.clone();
     let state_topic = format!("secretary/{}/state", device_id);
+    let availability_topic = format!("secretary/{}/availability", device_id);
     DEVICE_NAME.set(device_name.clone()).ok();
     DEVICE_ID.set(device_id.clone()).ok();
 
     mqtt::publish_discovery(&mqtt::HassDeviceConfig {
         name: device_name.to_string(),
-        device_id,
+        device_id: device_id.clone(),
         state_topic,
+        availability_topic: Some(availability_topic),
     });
+    mqtt::publish_availability(&device_id, "online");
 
     build.mount(base, routes![main])
 }
@@ -104,6 +107,7 @@ async fn main(
 
     if let (Some(device_id), Some(_device_name)) = (DEVICE_ID.get(), DEVICE_NAME.get()) {
         mqtt::publish_state(device_id, battery, &now_local.to_rfc3339());
+        mqtt::publish_availability(device_id, "online");
     }
 
     let context = Context {
