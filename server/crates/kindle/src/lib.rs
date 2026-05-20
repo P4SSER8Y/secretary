@@ -5,7 +5,7 @@ mod delta;
 mod shared;
 
 use anyhow::{anyhow, Result};
-use image::GrayImage;
+use image::DynamicImage;
 use log::info;
 use once_cell::sync::OnceCell;
 use rand::Rng;
@@ -19,15 +19,15 @@ pub fn set_default_style(style: Option<usize>) {
     }
 }
 
-pub async fn factory(style: Option<usize>, context: &Context) -> Result<GrayImage> {
+pub async fn factory(style: Option<usize>, context: &Context) -> Result<DynamicImage> {
     let n = style
         .or_else(|| *DEFAULT_STYLE.get().unwrap())
         .unwrap_or_else(|| rand::thread_rng().gen_range(0..3));
     return match n {
-        0 => alpha::generate(context).await,
-        1 => bravo::generate(context).await,
-        2 => charlie::generate(context).await,
-        3 => delta::generate(context).await,
+        0 => alpha::generate(context).await.map(DynamicImage::from),
+        1 => bravo::generate(context).await.map(DynamicImage::from),
+        2 => charlie::generate(context).await.map(DynamicImage::from),
+        3 => delta::generate(context).await.map(DynamicImage::from),
         _ => Err(anyhow!("unknown style = {}", n)),
     };
 }
