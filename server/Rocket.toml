@@ -21,11 +21,12 @@ tsdb = true
 meme = true
 
 [default.kindle]
-style = "<0,1,2>"
+style = "<0,1,2,3>"
 device_name = "kindle"
 fonts.main = ""
 fonts.weather = ""
 fonts.status = ""
+dashboard_path = ""
 
 [default.mqtt]
 host = ""
