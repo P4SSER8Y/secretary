@@ -113,6 +113,7 @@ pub fn draw_aligned_text<'a>(
 pub struct Context {
     pub battery: Option<usize>,
     pub now: Option<chrono::DateTime<chrono::Local>>,
+    pub dashboard_path: Option<String>,
 }
 
 static FONTS: OnceCell<HashMap<String, Font>> = OnceCell::new();

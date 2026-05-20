@@ -10,6 +10,7 @@ use std::vec;
 
 static DEVICE_NAME: OnceCell<String> = OnceCell::new();
 static DEVICE_ID: OnceCell<String> = OnceCell::new();
+static DASHBOARD_PATH: OnceCell<Option<String>> = OnceCell::new();
 
 pub fn build(base: &'static str, build: Rocket<Build>, config: &Figment) -> Rocket<Build> {
     kindle::set_default_style(
@@ -43,6 +44,12 @@ pub fn build(base: &'static str, build: Rocket<Build>, config: &Figment) -> Rock
     let availability_topic = format!("secretary/{}/availability", device_id);
     DEVICE_NAME.set(device_name.clone()).ok();
     DEVICE_ID.set(device_id.clone()).ok();
+
+    let dashboard_path = config
+        .find_value("kindle.dashboard_path")
+        .ok()
+        .and_then(|x| x.into_string());
+    DASHBOARD_PATH.set(dashboard_path).ok();
 
     mqtt::publish_discovery(&mqtt::HassDeviceConfig {
         name: device_name.to_string(),
@@ -113,6 +120,7 @@ async fn main(
     let context = Context {
         battery: battery,
         now: Some(now),
+        dashboard_path: DASHBOARD_PATH.get().and_then(|x| x.clone()),
     };
     info!("style={:?}", style);
     info!("now={:?}", context.now);

@@ -1,6 +1,7 @@
 mod alpha;
 mod bravo;
 mod charlie;
+mod delta;
 mod shared;
 
 use anyhow::{anyhow, Result};
@@ -26,6 +27,7 @@ pub async fn factory(style: Option<usize>, context: &Context) -> Result<GrayImag
         0 => alpha::generate(context).await,
         1 => bravo::generate(context).await,
         2 => charlie::generate(context).await,
+        3 => delta::generate(context).await,
         _ => Err(anyhow!("unknown style = {}", n)),
     };
 }
