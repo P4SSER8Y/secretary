@@ -11,6 +11,7 @@ const originalUrl = ref<string | null>(null);
 const epdUrl = ref<string | null>(null);
 const uploading = ref(false);
 const previewing = ref(false);
+const sending = ref(false);
 
 const params = ref({
     crop_mode: 'center',
@@ -64,6 +65,28 @@ async function doPreview() {
         emit('error', 'Preview failed');
     } finally {
         previewing.value = false;
+    }
+}
+
+async function doDisplay() {
+    const file = fileInput.value?.files?.[0];
+    if (!file) return;
+
+    sending.value = true;
+    try {
+        const form = new FormData();
+        form.append('file', file);
+        form.append('crop_mode', params.value.crop_mode === 'none' ? '' : params.value.crop_mode);
+        form.append('dither', String(params.value.dither));
+        form.append('rotate_cw', String(params.value.rotate_cw));
+        form.append('rotate_ccw', String(params.value.rotate_ccw));
+        form.append('invert', String(params.value.invert));
+
+        await api.post('display', form);
+    } catch (e: any) {
+        emit('error', e?.response?.data?.message || 'Send failed');
+    } finally {
+        sending.value = false;
     }
 }
 
@@ -122,6 +145,9 @@ async function doUpload() {
                     </button>
                     <button class="btn btn-sm btn-primary" :disabled="uploading" @click="doUpload">
                         {{ uploading ? '...' : '保存' }}
+                    </button>
+                    <button class="btn btn-sm btn-accent" :disabled="sending" @click="doDisplay">
+                        {{ sending ? '...' : '发送' }}
                     </button>
                 </div>
             </div>

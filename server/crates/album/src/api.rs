@@ -66,6 +66,7 @@ pub async fn build(
         base,
         routes![
             preview,
+            display,
             upload,
             list,
             get_preview,
@@ -99,6 +100,31 @@ async fn preview(
     .map_err(|e| err_json(&format!("conversion failed: {}", e)))?;
 
     Ok((ContentType::PNG, converted.epd_png))
+}
+
+#[post("/display", data = "<form>", format = "multipart/form-data")]
+async fn display(
+    form: rocket::form::Form<UploadForm<'_>>,
+    state: &State<AlbumState>,
+) -> Result<Json<SwitchResponse>, RawJson<String>> {
+    let (file_data, params, _, _) = extract_form(form).await?;
+    let cfg = state.config.clone();
+
+    let converted = tokio::task::spawn_blocking(move || {
+        crate::converter::convert_to_epd(&file_data, &params, &cfg)
+    })
+    .await
+    .map_err(|e| err_json(&format!("conversion panicked: {}", e)))?
+    .map_err(|e| err_json(&format!("conversion failed: {}", e)))?;
+
+    sender::send_to_device(&state.config, &converted.raw_4bpp)
+        .await
+        .map_err(|e| err_json(&format!("send failed: {}", e)))?;
+
+    Ok(Json(SwitchResponse {
+        ok: true,
+        message: "image sent to device".to_string(),
+    }))
 }
 
 #[post("/upload", data = "<form>", format = "multipart/form-data")]
