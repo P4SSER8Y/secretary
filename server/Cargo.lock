@@ -68,6 +68,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "album"
+version = "0.25.2"
+dependencies = [
+ "anyhow",
+ "base64 0.22.1",
+ "chrono",
+ "figment",
+ "image 0.25.6",
+ "log",
+ "mqtt",
+ "once_cell",
+ "palette",
+ "rand 0.9.1",
+ "reqwest",
+ "rocket",
+ "serde",
+ "serde_json",
+ "sled",
+ "tokio",
+ "utils",
+ "uuid",
+]
+
+[[package]]
 name = "aligned-vec"
 version = "0.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2000,6 +2024,7 @@ dependencies = [
 name = "mqtt"
 version = "0.25.2"
 dependencies = [
+ "anyhow",
  "log",
  "once_cell",
  "rumqttc",
@@ -3324,6 +3349,7 @@ dependencies = [
 name = "secretary"
 version = "0.25.2"
 dependencies = [
+ "album",
  "anyhow",
  "bark",
  "chrono",

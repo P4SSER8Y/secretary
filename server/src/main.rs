@@ -160,6 +160,9 @@ async fn go(config: &Figment) -> Result<(), rocket::Error> {
     if is_enabled(&config, "meme", false) {
         wtf = meme::build("/meme/", wtf, &config).await.unwrap();
     }
+    if is_enabled(&config, "album", false) {
+        wtf = album::build("/album/api/", wtf, &config).await.unwrap();
+    }
     if is_enabled(&config, "inbox", false) {
         wtf = inbox::build("/inbox/api/", wtf, &config).await.unwrap();
     }

@@ -19,6 +19,7 @@ let_server_run = true
 inbox = true
 tsdb = true
 meme = true
+album = true
 
 [default.kindle]
 style = "<0,1,2,3>"
@@ -70,3 +71,14 @@ key_file = "meme_key.yaml"
 eink_album_width = 800
 eink_album_height = 480
 s3_concurrency = 16
+
+[default.album]
+storage_path = "album"
+device_name = "eink_album"
+eink_width = 800
+eink_height = 480
+mqtt_device_ip_topic = "homeassistant/sensor/eink_album/ip/state"
+mqtt_device_state_topic = "homeassistant/sensor/eink_album/status/state"
+device_http_endpoint = "http://{ip}/api/upload"
+preserve_original = false
+

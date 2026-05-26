@@ -1,9 +1,14 @@
 use once_cell::sync::OnceCell;
-use rumqttc::{Client, MqttOptions, QoS};
+use rumqttc::{Client, Connection, Event, Incoming, MqttOptions, QoS};
 use serde::Serialize;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::Duration;
 
 static CLIENT: OnceCell<Client> = OnceCell::new();
+static CONNECTION: OnceCell<Mutex<Connection>> = OnceCell::new();
+type TopicCallback = Arc<dyn Fn(Vec<u8>) + Send + Sync + 'static>;
+static SUBSCRIBERS: OnceCell<Arc<RwLock<HashMap<String, Vec<TopicCallback>>>>> = OnceCell::new();
 
 pub struct MqttConfig {
     pub host: String,
@@ -39,10 +44,39 @@ pub fn init(config: MqttConfig) {
         }
     }
 
-    let (client, mut connection) = Client::new(options, 10);
+    let (client, connection) = Client::new(options, 10);
     CLIENT.set(client).ok();
+    SUBSCRIBERS
+        .set(Arc::new(RwLock::new(HashMap::new())))
+        .ok();
+    CONNECTION.set(Mutex::new(connection)).ok();
+
+    let subscribers = SUBSCRIBERS.get().unwrap().clone();
     std::thread::spawn(move || {
-        for _ in connection.iter() {}
+        let conn = CONNECTION.get().unwrap();
+        let mut conn = match conn.lock() {
+            Ok(c) => c,
+            Err(_) => return,
+        };
+        for notification in conn.iter() {
+            match notification {
+                Ok(Event::Incoming(Incoming::Publish(publish))) => {
+                    let payload = publish.payload.to_vec();
+                    let topic = publish.topic;
+                    if let Ok(registry) = subscribers.read() {
+                        for (filter, callbacks) in registry.iter() {
+                            if rumqttc::matches(&topic, filter) {
+                                for cb in callbacks {
+                                    cb(payload.clone());
+                                }
+                            }
+                        }
+                    }
+                }
+                Err(e) => log::error!("mqtt event loop error: {}", e),
+                _ => {}
+            }
+        }
     });
     log::info!(
         "mqtt connected to {}:{} as {}",
@@ -50,6 +84,26 @@ pub fn init(config: MqttConfig) {
         config.port,
         config.client_id
     );
+}
+
+pub fn subscribe(
+    topic_filter: &str,
+    callback: impl Fn(Vec<u8>) + Send + Sync + 'static,
+) -> anyhow::Result<()> {
+    let cb: TopicCallback = Arc::new(callback);
+    SUBSCRIBERS
+        .get()
+        .ok_or(anyhow::anyhow!("mqtt not initialized"))?
+        .write()
+        .map_err(|e| anyhow::anyhow!("lock error: {}", e))?
+        .entry(topic_filter.to_string())
+        .or_insert_with(Vec::new)
+        .push(cb);
+
+    if let Some(client) = client() {
+        client.subscribe(topic_filter, QoS::AtMostOnce)?;
+    }
+    Ok(())
 }
 
 pub fn publish_discovery(config: &HassDeviceConfig) {

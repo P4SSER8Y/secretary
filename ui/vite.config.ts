@@ -13,6 +13,7 @@ export default defineConfig(({ mode }) => {
             copyPublicDir: true,
             rollupOptions: {
                 input: {
+                    album: resolve(__dirname, 'album/index.html'),
                     inbox: resolve(__dirname, 'inbox/index.html'),
                     kindle: resolve(__dirname, 'kindle/debug/index.html'),
                     meme: resolve(__dirname, 'meme/index.html'),
@@ -27,6 +28,10 @@ export default defineConfig(({ mode }) => {
         server: {
             host: true,
             proxy: {
+                '^/album/api': {
+                    target: env.VITE_PROXY_ALBUM_API,
+                    changeOrigin: true,
+                },
                 '^/inbox/api': {
                     target: env.VITE_PROXY_INBOX_API,
                     changeOrigin: true,
