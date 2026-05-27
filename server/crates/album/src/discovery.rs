@@ -1,6 +1,9 @@
 use std::sync::RwLock;
 
+use rand::Rng;
+
 use crate::config::AlbumConfig;
+use crate::{sender, storage};
 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct DeviceState {
@@ -52,6 +55,33 @@ pub fn init(cfg: &AlbumConfig) -> anyhow::Result<()> {
             state.online = true;
         }
     })?;
+
+    // Subscribe to button random command topic — triggers random photo switch
+    let button_topic = cfg.mqtt_button_random_topic.clone();
+    if !button_topic.is_empty() {
+        let cfg = cfg.clone();
+        mqtt::subscribe(&button_topic, move |_payload| {
+            let images = storage::list_images();
+            if images.is_empty() {
+                log::warn!("mqtt button: no images to switch to");
+                return;
+            }
+            let idx = rand::rng().random_range(0..images.len());
+            let id = &images[idx].id;
+            log::info!("mqtt button: switching to random image {}", id);
+
+            match storage::load_raw_binary(&cfg, id) {
+                Ok(raw) => {
+                    if let Err(e) = sender::send_to_device_blocking(&cfg, &raw) {
+                        log::error!("mqtt button: send failed: {}", e);
+                    } else {
+                        storage::set_current(id).ok();
+                    }
+                }
+                Err(e) => log::error!("mqtt button: load raw failed: {}", e),
+            }
+        })?;
+    }
 
     log::info!(
         "album discovery initialized: ip_topic={}, state_topic={}",

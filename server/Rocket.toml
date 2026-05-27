@@ -79,6 +79,7 @@ eink_width = 800
 eink_height = 480
 mqtt_device_ip_topic = "homeassistant/sensor/eink_album/ip/state"
 mqtt_device_state_topic = "homeassistant/sensor/eink_album/status/state"
+mqtt_button_random_topic = "homeassistant/button/eink_album/random/command"
 device_http_endpoint = "http://{ip}/api/upload"
 preserve_original = false
 

@@ -13,6 +13,7 @@ pub struct AlbumConfig {
     pub mqtt_device_state_topic: String,
     pub device_http_endpoint: String,
     pub preserve_original: bool,
+    pub mqtt_button_random_topic: String,
 }
 
 impl AlbumConfig {
@@ -65,6 +66,12 @@ impl AlbumConfig {
             .and_then(|v| v.to_bool())
             .unwrap_or(false);
 
+        let mqtt_button_random_topic = config
+            .find_value("album.mqtt_button_random_topic")
+            .ok()
+            .and_then(|v| v.into_string())
+            .unwrap_or_default();
+
         Ok(AlbumConfig {
             storage_path,
             device_name,
@@ -74,6 +81,7 @@ impl AlbumConfig {
             mqtt_device_state_topic,
             device_http_endpoint,
             preserve_original,
+            mqtt_button_random_topic,
         })
     }
 }
