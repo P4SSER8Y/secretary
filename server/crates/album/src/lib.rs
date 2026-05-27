@@ -17,8 +17,8 @@ pub async fn build(
     let cfg = AlbumConfig::from_figment(config)?;
 
     storage::init(&cfg).await?;
-    discovery::init(&cfg)?;
     discovery::set_runtime_handle(tokio::runtime::Handle::current());
+    discovery::init(&cfg)?;
 
     let build = api::build(build, base, cfg).await?;
     Ok(build)
