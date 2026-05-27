@@ -11,7 +11,6 @@ export interface ConversionParams {
     dither: boolean;
     rotate_cw: boolean;
     rotate_ccw: boolean;
-    invert: boolean;
 }
 
 export interface DeviceState {

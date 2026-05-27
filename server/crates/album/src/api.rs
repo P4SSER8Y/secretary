@@ -52,7 +52,6 @@ struct UploadForm<'r> {
     dither: Option<bool>,
     rotate_cw: Option<bool>,
     rotate_ccw: Option<bool>,
-    invert: Option<bool>,
 }
 
 // ---- Build ----
@@ -274,13 +273,31 @@ fn delete_image(
 }
 
 #[get("/device-status")]
-fn device_status() -> Json<StatusResponse> {
+async fn device_status() -> Json<StatusResponse> {
     let s = discovery::get_device_state();
+
+    let (online, last_seen) = if let Some(ref ip) = s.ip {
+        let url = format!("http://{}/api/health", ip);
+        match reqwest::Client::new()
+            .get(&url)
+            .timeout(std::time::Duration::from_secs(1))
+            .send()
+            .await
+        {
+            Ok(resp) if resp.status().is_success() => {
+                (true, Some(chrono::Local::now().to_rfc3339()))
+            }
+            _ => (false, s.last_seen),
+        }
+    } else {
+        (false, None)
+    };
+
     Json(StatusResponse {
         ip: s.ip,
-        online: s.online,
+        online,
         status: s.status,
-        last_seen: s.last_seen,
+        last_seen,
     })
 }
 
@@ -338,7 +355,6 @@ async fn extract_form(
         dither: form.dither.unwrap_or(true),
         rotate_cw: form.rotate_cw.unwrap_or(false),
         rotate_ccw: form.rotate_ccw.unwrap_or(false),
-        invert: form.invert.unwrap_or(false),
         ..Default::default()
     };
 

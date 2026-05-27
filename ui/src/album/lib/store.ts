@@ -17,7 +17,7 @@ export const useDeviceStore = defineStore('album-device', () => {
             const res = await api.get('device-status');
             deviceState.value = res.data;
         } catch {
-            // device status endpoint may not be available
+            // server unreachable
         }
     }
 

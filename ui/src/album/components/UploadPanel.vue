@@ -18,7 +18,6 @@ const params = ref({
     dither: true,
     rotate_cw: false,
     rotate_ccw: false,
-    invert: false,
 });
 
 const cropOptions = [
@@ -56,7 +55,6 @@ async function doPreview() {
         form.append('dither', String(params.value.dither));
         form.append('rotate_cw', String(params.value.rotate_cw));
         form.append('rotate_ccw', String(params.value.rotate_ccw));
-        form.append('invert', String(params.value.invert));
 
         const res = await api.post('preview', form, { responseType: 'blob' });
         if (epdUrl.value) URL.revokeObjectURL(epdUrl.value);
@@ -80,7 +78,6 @@ async function doDisplay() {
         form.append('dither', String(params.value.dither));
         form.append('rotate_cw', String(params.value.rotate_cw));
         form.append('rotate_ccw', String(params.value.rotate_ccw));
-        form.append('invert', String(params.value.invert));
 
         await api.post('display', form);
     } catch (e: any) {
@@ -102,7 +99,6 @@ async function doUpload() {
         form.append('dither', String(params.value.dither));
         form.append('rotate_cw', String(params.value.rotate_cw));
         form.append('rotate_ccw', String(params.value.rotate_ccw));
-        form.append('invert', String(params.value.invert));
 
         const res = await api.post('upload', form);
         if (res.data.ok) {
@@ -153,37 +149,39 @@ async function doUpload() {
             </div>
 
             <!-- toggles -->
-            <div class="flex flex-wrap gap-3 text-xs items-center">
-                <div class="join">
+            <div class="flex gap-3 text-xs items-start">
+                <div class="grid grid-cols-3 gap-1 w-fit">
                     <button
-                        v-for="o in cropOptions" :key="o.v"
-                        class="btn btn-xs join-item"
-                        :class="params.crop_mode === o.v ? 'btn-active' : ''"
+                        v-for="o in cropOptions.filter(x => x.v !== 'none')" :key="o.v"
+                        class="btn btn-xs"
+                        :class="params.crop_mode === o.v ? 'btn-primary' : 'btn-ghost'"
                         @click="params.crop_mode = o.v"
                     >{{ o.l }}</button>
+                    <button
+                        class="btn btn-xs col-span-3"
+                        :class="params.crop_mode === 'none' ? 'btn-primary' : 'btn-ghost'"
+                        @click="params.crop_mode = 'none'"
+                    >Fit</button>
                 </div>
 
-                <label class="flex items-center gap-1 cursor-pointer">
-                    <input type="checkbox" v-model="params.dither" class="toggle toggle-xs" />
-                    <span>dither</span>
-                </label>
+                <div class="flex flex-col gap-1">
+                    <label class="flex items-center gap-1 cursor-pointer">
+                        <input type="checkbox" v-model="params.dither" class="toggle toggle-xs" />
+                        <span>dither</span>
+                    </label>
 
-                <label class="flex items-center gap-1 cursor-pointer">
-                    <input type="checkbox" v-model="params.rotate_cw" class="toggle toggle-xs"
-                        @change="params.rotate_ccw = false" />
-                    <span>cw</span>
-                </label>
+                    <label class="flex items-center gap-1 cursor-pointer">
+                        <input type="checkbox" v-model="params.rotate_cw" class="toggle toggle-xs"
+                            @change="params.rotate_ccw = false" />
+                        <span>cw</span>
+                    </label>
 
-                <label class="flex items-center gap-1 cursor-pointer">
-                    <input type="checkbox" v-model="params.rotate_ccw" class="toggle toggle-xs"
-                        @change="params.rotate_cw = false" />
-                    <span>ccw</span>
-                </label>
-
-                <label class="flex items-center gap-1 cursor-pointer">
-                    <input type="checkbox" v-model="params.invert" class="toggle toggle-xs" />
-                    <span>invert</span>
-                </label>
+                    <label class="flex items-center gap-1 cursor-pointer">
+                        <input type="checkbox" v-model="params.rotate_ccw" class="toggle toggle-xs"
+                            @change="params.rotate_cw = false" />
+                        <span>ccw</span>
+                    </label>
+                </div>
             </div>
 
             <!-- preview: two columns -->

@@ -76,7 +76,6 @@ pub struct ConversionParams {
     pub dither: bool,
     pub rotate_cw: bool,
     pub rotate_ccw: bool,
-    pub invert: bool,
 }
 
 impl Default for ConversionParams {
@@ -86,7 +85,6 @@ impl Default for ConversionParams {
             dither: true,
             rotate_cw: false,
             rotate_ccw: false,
-            invert: false,
         }
     }
 }
@@ -229,15 +227,7 @@ pub fn convert_to_epd(
         ImageFormat::Png,
     )?;
 
-    // 5. Invert
-    if params.invert {
-        img = ImageBuffer::from_fn(target_w, target_h, |x, y| {
-            let p = img.get_pixel(x, y);
-            Rgb([255 - p[0], 255 - p[1], 255 - p[2]])
-        });
-    }
-
-    // 6. Dither + map to exact EPD colors
+    // 5. Dither + map to exact EPD colors
     if params.dither {
         imageops::dither(&mut img, &SevenColorEPD);
     } else {
@@ -251,14 +241,14 @@ pub fn convert_to_epd(
         }
     }
 
-    // 7. Generate 7-color preview PNG
+    // 6. Generate 7-color preview PNG
     let mut epd_png = Vec::new();
     img.write_to(
         &mut Cursor::new(&mut epd_png),
         ImageFormat::Png,
     )?;
 
-    // 8. Pack to 4bpp: each byte = (even_px << 4) | odd_px
+    // 7. Pack to 4bpp: each byte = (even_px << 4) | odd_px
     let buf_size = (target_w * target_h / 2) as usize;
     let mut raw_4bpp = vec![0u8; buf_size];
     for py in 0..target_h {
