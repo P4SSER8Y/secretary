@@ -8,7 +8,7 @@ pub fn get_db() -> sled::Db {
         let path = std::path::Path::new(data).join("memory");
         sled::open(path).unwrap()
     });
-    return INSTANCE.clone();
+    INSTANCE.clone()
 }
 
 pub struct Db {
@@ -24,20 +24,26 @@ impl Db {
         let result = self.db.get(key)?;
         if let Some(raw) = result {
             let result: T = bincode::deserialize::<T>(&raw)?;
-            return Ok(Some(result));
+            Ok(Some(result))
         } else {
-            return Ok(None);
+            Ok(None)
         }
     }
 
     pub fn set<T: Serialize>(&self, key: &str, value: &T) -> Result<()> {
         let value = bincode::serialize(value)?;
         let _ = self.db.insert(key, value)?;
-        return Ok(());
+        Ok(())
     }
 
     pub fn flush(&self) -> Result<()> {
         let _ = self.db.flush()?;
-        return Ok(());
+        Ok(())
+    }
+}
+
+impl Default for Db {
+    fn default() -> Self {
+        Self::new()
     }
 }

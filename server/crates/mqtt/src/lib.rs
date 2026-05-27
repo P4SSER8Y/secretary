@@ -8,7 +8,8 @@ use std::time::Duration;
 static CLIENT: OnceCell<Client> = OnceCell::new();
 static CONNECTION: OnceCell<Mutex<Connection>> = OnceCell::new();
 type TopicCallback = Arc<dyn Fn(Vec<u8>) + Send + Sync + 'static>;
-static SUBSCRIBERS: OnceCell<Arc<RwLock<HashMap<String, Vec<TopicCallback>>>>> = OnceCell::new();
+type SubscriberMap = HashMap<String, Vec<TopicCallback>>;
+static SUBSCRIBERS: OnceCell<Arc<RwLock<SubscriberMap>>> = OnceCell::new();
 
 pub struct MqttConfig {
     pub host: String,

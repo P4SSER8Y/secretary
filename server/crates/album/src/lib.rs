@@ -18,6 +18,7 @@ pub async fn build(
 
     storage::init(&cfg).await?;
     discovery::init(&cfg)?;
+    discovery::set_runtime_handle(tokio::runtime::Handle::current());
 
     let build = api::build(build, base, cfg).await?;
     Ok(build)

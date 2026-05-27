@@ -1,9 +1,16 @@
 use std::sync::RwLock;
 
+use once_cell::sync::OnceCell;
 use rand::Rng;
 
 use crate::config::AlbumConfig;
 use crate::{sender, storage};
+
+static RUNTIME: OnceCell<tokio::runtime::Handle> = OnceCell::new();
+
+pub fn set_runtime_handle(handle: tokio::runtime::Handle) {
+    RUNTIME.set(handle).ok();
+}
 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct DeviceState {
@@ -60,6 +67,10 @@ pub fn init(cfg: &AlbumConfig) -> anyhow::Result<()> {
     let button_topic = cfg.mqtt_button_random_topic.clone();
     if !button_topic.is_empty() {
         let cfg = cfg.clone();
+        let handle = RUNTIME
+            .get()
+            .ok_or(anyhow::anyhow!("tokio runtime handle not set"))?
+            .clone();
         mqtt::subscribe(&button_topic, move |_payload| {
             let images = storage::list_images();
             if images.is_empty() {
@@ -67,19 +78,24 @@ pub fn init(cfg: &AlbumConfig) -> anyhow::Result<()> {
                 return;
             }
             let idx = rand::rng().random_range(0..images.len());
-            let id = &images[idx].id;
+            let id = images[idx].id.clone();
             log::info!("mqtt button: switching to random image {}", id);
 
-            match storage::load_raw_binary(&cfg, id) {
-                Ok(raw) => {
-                    if let Err(e) = sender::send_to_device_blocking(&cfg, &raw) {
-                        log::error!("mqtt button: send failed: {}", e);
-                    } else {
-                        storage::set_current(id).ok();
+            let cfg = cfg.clone();
+            handle.block_on(async move {
+                let raw = match storage::load_raw_binary(&cfg, &id) {
+                    Ok(r) => r,
+                    Err(e) => {
+                        log::error!("mqtt button: load raw failed: {}", e);
+                        return;
                     }
+                };
+                if let Err(e) = sender::send_to_device(&cfg, &raw).await {
+                    log::error!("mqtt button: send failed: {}", e);
+                } else {
+                    storage::set_current(&id).ok();
                 }
-                Err(e) => log::error!("mqtt button: load raw failed: {}", e),
-            }
+            });
         })?;
     }
 

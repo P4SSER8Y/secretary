@@ -16,7 +16,7 @@ pub struct RawImage<'r> {
 }
 
 #[allow(dead_code)]
-pub async fn compress(data: &[u8]) -> anyhow::Result<RawImage> {
+pub async fn compress(data: &[u8]) -> anyhow::Result<RawImage<'_>> {
     const FORMAT: ImageFormat = ImageFormat::WebP;
     let img = ImageReader::new(Cursor::new(data))
         .with_guessed_format()?
@@ -31,7 +31,7 @@ pub async fn compress(data: &[u8]) -> anyhow::Result<RawImage> {
 }
 
 #[allow(dead_code)]
-pub async fn guess_image_mime_type(data: &[u8]) -> anyhow::Result<RawImage> {
+pub async fn guess_image_mime_type(data: &[u8]) -> anyhow::Result<RawImage<'_>> {
     let format = guess_format(data);
     match format {
         Ok(format) => Ok(RawImage {
@@ -43,7 +43,7 @@ pub async fn guess_image_mime_type(data: &[u8]) -> anyhow::Result<RawImage> {
     }
 }
 
-pub async fn generate_thumbnail(data: &[u8]) -> anyhow::Result<RawImage> {
+pub async fn generate_thumbnail(data: &[u8]) -> anyhow::Result<RawImage<'_>> {
     const FORMAT: ImageFormat = ImageFormat::WebP;
     let mut img = ImageReader::new(Cursor::new(data))
         .with_guessed_format()?

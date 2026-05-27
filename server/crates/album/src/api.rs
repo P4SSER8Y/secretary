@@ -355,7 +355,6 @@ async fn extract_form(
         dither: form.dither.unwrap_or(true),
         rotate_cw: form.rotate_cw.unwrap_or(false),
         rotate_ccw: form.rotate_ccw.unwrap_or(false),
-        ..Default::default()
     };
 
     Ok((file_data, params, original_filename, mime_type))

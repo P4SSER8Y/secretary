@@ -134,6 +134,6 @@ pub fn load_fonts(fonts: HashMap<String, String>) {
     });
 }
 
-pub fn get_font(name: &str) -> Option<&Font> {
-    return FONTS.get().unwrap().get(name);
+pub fn get_font(name: &str) -> Option<&Font<'_>> {
+    FONTS.get().unwrap().get(name)
 }
