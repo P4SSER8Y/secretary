@@ -51,7 +51,6 @@ function nextImage() {
                 <div>Crop: {{ meta.params.crop_mode || 'fit' }}</div>
                 <div v-if="meta.params.rotate_cw">Rotate: CW</div>
                 <div v-if="meta.params.rotate_ccw">Rotate: CCW</div>
-                <div v-if="meta.params.invert">Invert: on</div>
             </div>
         </div>
     </div>
