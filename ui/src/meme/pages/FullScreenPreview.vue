@@ -6,7 +6,7 @@ const api = getCurrentInstance()?.appContext.config.globalProperties.$api;
 const props = defineProps<{
     meta: Meta;
 }>();
-const emit = defineEmits<{ end: []; deleted: [uuid: string] }>();
+const emit = defineEmits<{ end: []; deleted: [uuid: string]; 'tags-updated': [] }>();
 const password = inject<Ref<string>>('password', ref(''));
 const img_src = computed(() => {
     let url = `i/raw/${props.meta.uuid}`;
@@ -67,6 +67,54 @@ function cancel_delete() {
     is_hold_on.value = false;
 }
 
+// ---- tag editing ----
+
+const mime_parts = new Set(props.meta.mime.split('/').map(t => t.toLowerCase()));
+const user_tags = (props.meta.tags ?? []).filter(t => !mime_parts.has(t.toLowerCase()));
+
+const tags = ref<string[]>([...user_tags]);
+const new_tag_input = ref('');
+const is_saving = ref(false);
+
+async function save_tags() {
+    is_saving.value = true;
+    try {
+        await api?.post(`tag/${props.meta.uuid}`, { tags: tags.value });
+        props.meta.tags = [...tags.value];
+        emit('tags-updated');
+        console.log(`tags saved for ${props.meta.uuid}: ${tags.value}`);
+    } catch (e) {
+        console.error('failed to save tags', e);
+        tags.value = [...(props.meta.tags ?? [])];
+    } finally {
+        is_saving.value = false;
+    }
+}
+
+function add_tags() {
+    const raw = new_tag_input.value.trim();
+    if (!raw) return;
+    const incoming = raw
+        .split(/[,，;；]/)
+        .map(t => t.trim())
+        .filter(t => t.length > 0);
+    if (incoming.length === 0) return;
+    const existing = new Set(tags.value.map(t => t.toLowerCase()));
+    for (const t of incoming) {
+        if (!existing.has(t.toLowerCase())) {
+            tags.value.push(t);
+            existing.add(t.toLowerCase());
+        }
+    }
+    new_tag_input.value = '';
+    save_tags();
+}
+
+function remove_tag(idx: number) {
+    tags.value.splice(idx, 1);
+    save_tags();
+}
+
 onMounted(() => {
     is_hold_on.value = false;
     delete_code.value = null;
@@ -85,6 +133,27 @@ onBeforeUnmount(() => {
         <img v-if="props.meta.mime.startsWith('image/')" :src="img_src" class="object-contain w-full h-full" />
         <video v-else-if="props.meta.mime.startsWith('video/')" :src="img_src" class="object-contain w-full h-full" autoplay loop/>
     </div>
+
+    <!-- tag bar -->
+    <div class="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 flex flex-wrap items-center gap-1.5 max-w-[80dvw] bg-base-100/90 backdrop-blur-md border border-base-300/50 rounded-box p-2" @click.stop>
+        <span v-for="(tag, idx) in tags" :key="idx" class="badge badge-soft badge-info gap-1 pr-0.5">
+            {{ tag }}
+            <button class="btn btn-ghost btn-xs px-0.5 hover:btn-error" @click="remove_tag(idx)" :disabled="is_saving">&times;</button>
+        </span>
+        <div class="join join-horizontal">
+            <input
+                v-model="new_tag_input"
+                type="text"
+                placeholder="+ tag"
+                class="input input-xs input-ghost w-20 focus:w-32 transition-all duration-200"
+                :disabled="is_saving"
+                @keyup.enter="add_tags"
+            />
+            <button v-if="new_tag_input.trim().length > 0" class="join-item btn btn-xs btn-ghost" @click="add_tags" :disabled="is_saving">OK</button>
+        </div>
+    </div>
+
+    <!-- delete bar -->
     <div class="fixed bottom-0 right-0 pb-4 z-50">
         <div class="join">
             <button v-if="!delete_code" class="join-item btn btn-xs btn-ghost duration-300 ease-in-out"

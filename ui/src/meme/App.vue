@@ -297,7 +297,8 @@ onMounted(() => {
     <Gallery v-else-if="token && page == PageType.Gallery" :data="data"></Gallery>
     <Upload v-if="token && !single_preview" @done="uploaded"></Upload>
     <FullScreenPreview v-if="token && single_preview" :meta="single_preview" @end="() => (single_preview = null)"
-        @deleted="(uuid) => delete_item(uuid)">
+        @deleted="(uuid) => delete_item(uuid)"
+        @tags-updated="() => update()">
     </FullScreenPreview>
     <TagCloud v-if="is_tag_cloud_shown" :data="data" @commit="commit_filter" @quit="is_tag_cloud_shown = false">
     </TagCloud>

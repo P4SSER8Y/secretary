@@ -9,7 +9,7 @@ use rocket::{
     response::{self, Responder},
     Request, Response,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 #[rocket::async_trait]
 impl<'a> FromRequest<'a> for TokenPayload {
@@ -141,6 +141,11 @@ impl From<&MetaData> for BriefMetaData {
             encrypted: meta.encrypted,
         }
     }
+}
+
+#[derive(Deserialize, Debug)]
+pub struct UpdateTagsRequest {
+    pub tags: Vec<String>,
 }
 
 #[derive(Serialize, Debug)]

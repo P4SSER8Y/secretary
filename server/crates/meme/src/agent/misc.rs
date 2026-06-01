@@ -65,6 +65,12 @@ pub struct ReencryptError {
     pub error: String,
 }
 
+pub struct FilterTerm {
+    pub text: String,
+    pub exact: bool,
+    pub negative: bool,
+}
+
 static BUCKET: OnceLock<Box<s3::Bucket>> = OnceLock::new();
 static S3_SEMAPHORE: OnceLock<Arc<Semaphore>> = OnceLock::new();
 static HIDE: OnceLock<Vec<String>> = OnceLock::new();
@@ -82,6 +88,79 @@ pub fn split_tags(tags: Option<&str>) -> Vec<&str> {
         .collect::<HashSet<_>>()
         .into_iter()
         .collect()
+}
+
+fn is_delimiter(c: char) -> bool {
+    matches!(c, ',' | '，' | ';' | '；')
+}
+
+pub fn split_filter(filter: Option<&str>) -> Vec<FilterTerm> {
+    let input = filter.unwrap_or("");
+    let chars: Vec<char> = input.chars().collect();
+    let mut result = Vec::new();
+    let mut i = 0;
+
+    while i < chars.len() {
+        while i < chars.len() && chars[i].is_whitespace() {
+            i += 1;
+        }
+        if i >= chars.len() {
+            break;
+        }
+
+        let negative = chars[i] == '-';
+        if negative {
+            i += 1;
+        }
+
+        while i < chars.len() && chars[i].is_whitespace() {
+            i += 1;
+        }
+        if i >= chars.len() {
+            break;
+        }
+
+        if i < chars.len() && (chars[i] == '+' || chars[i] == '＋') {
+            i += 1;
+            while i < chars.len() && chars[i].is_whitespace() {
+                i += 1;
+            }
+        }
+        if i >= chars.len() {
+            break;
+        }
+
+        if chars[i] == '"' {
+            i += 1;
+            let mut text = String::new();
+            while i < chars.len() && chars[i] != '"' {
+                text.push(chars[i]);
+                i += 1;
+            }
+            if i < chars.len() {
+                i += 1;
+            }
+            let text = text.trim().to_ascii_lowercase();
+            if !text.is_empty() {
+                result.push(FilterTerm { text, exact: true, negative });
+            }
+        } else {
+            let mut text = String::new();
+            while i < chars.len() && !is_delimiter(chars[i]) {
+                text.push(chars[i]);
+                i += 1;
+            }
+            if i < chars.len() {
+                i += 1;
+            }
+            let text = text.trim().to_ascii_lowercase();
+            if !text.is_empty() {
+                result.push(FilterTerm { text, exact: false, negative });
+            }
+        }
+    }
+
+    result
 }
 
 #[cfg(feature = "avif")]
@@ -218,6 +297,70 @@ pub async fn insert(meta: Arc<MetaData>) -> Result<usize> {
         buffer.insert(meta.owner.to_string(), list);
     }
     Ok(buffer.get(&meta.owner).unwrap().len())
+}
+
+pub async fn update_tags(
+    owner: &str,
+    uuid: &str,
+    new_tags: Vec<String>,
+    password: Option<&str>,
+) -> Result<()> {
+    let buffer = META_BUFFERS
+        .get()
+        .with_context(|| anyhow!("META_BUFFERS not set"))?;
+
+    let meta = {
+        let buffer = buffer.read().await;
+        let owner_map = buffer
+            .get(owner)
+            .with_context(|| anyhow!("owner {} not found", owner))?;
+        let meta = owner_map
+            .get(&uuid.to_ascii_lowercase())
+            .with_context(|| anyhow!("uuid {} not found", uuid))?;
+        (**meta).clone()
+    };
+
+    let mut updated = meta;
+    updated.tags = new_tags
+        .iter()
+        .map(|t| t.trim().to_string())
+        .filter(|t| !t.is_empty())
+        .collect::<HashSet<_>>()
+        .into_iter()
+        .collect();
+    updated.lower_tags = updated
+        .tags
+        .iter()
+        .map(|t| t.to_ascii_lowercase())
+        .collect();
+
+    let meta_bytes = serde_yaml::to_string(&updated)?.into_bytes();
+
+    let to_upload: Vec<u8> = if updated.encrypted {
+        let pwd = password.with_context(|| anyhow!("password required for encrypted item"))?;
+        let key = super::crypto::derive_key(pwd, owner);
+        super::crypto::encrypt(&meta_bytes, &key)?
+    } else {
+        meta_bytes
+    };
+
+    let _permit = S3_SEMAPHORE
+        .get()
+        .with_context(|| anyhow!("S3_SEMAPHORE not set"))?
+        .acquire()
+        .await;
+    upload(
+        &format!("meta/{}/{}.yml", owner, uuid),
+        &to_upload,
+    )
+    .await?;
+
+    let mut buffer = buffer.write().await;
+    if let Some(owner_map) = buffer.get_mut(owner) {
+        owner_map.insert(uuid.to_ascii_lowercase(), Arc::new(updated));
+    }
+
+    Ok(())
 }
 
 pub async fn get_content(path: &str) -> Result<Vec<u8>> {
@@ -438,28 +581,40 @@ pub async fn list(
     }
     let buffer = buffer.unwrap();
     let mut result: Vec<Arc<MetaData>> = buffer.values().map(|v| v.clone()).collect();
-    let filters = split_tags(filter)
-        .iter()
-        .map(|s| s.to_ascii_lowercase())
-        .collect::<Vec<_>>();
+    let filters = split_filter(filter);
     debug!("{}", result.len());
     for hide in HIDE.get().unwrap_or(&Vec::new()) {
-        if !filters.contains(hide) {
+        if !filters.iter().any(|f| f.text == *hide) {
             debug!("remove {}", hide);
             result.retain(|v| v.lower_tags.iter().all(|s| !s.contains(hide)));
             debug!("{}", result.len());
         }
     }
-    for filter in filters {
-        let key = filter.trim_start_matches(&['+', '-', ' ']);
-        match filter.chars().nth(0) {
-            Some('-') => {
-                debug!("remove {}", key);
-                result.retain(|v| v.lower_tags.iter().all(|s| !s.contains(key)) && !v.content_type.contains(key));
+    for f in &filters {
+        let key = &f.text;
+        if f.negative {
+            debug!("remove {}", key);
+            if f.exact {
+                result.retain(|v| {
+                    v.lower_tags.iter().all(|s| s != key) && v.content_type != *key
+                });
+            } else {
+                result.retain(|v| {
+                    v.lower_tags.iter().all(|s| !s.contains(key))
+                        && !v.content_type.contains(key)
+                });
             }
-            _ => {
-                debug!("keep {}", key);
-                result.retain(|v| v.lower_tags.iter().any(|s| s.contains(key)) || v.content_type.contains(key));
+        } else {
+            debug!("keep {}", key);
+            if f.exact {
+                result.retain(|v| {
+                    v.lower_tags.iter().any(|s| s == key) || v.content_type == *key
+                });
+            } else {
+                result.retain(|v| {
+                    v.lower_tags.iter().any(|s| s.contains(key))
+                        || v.content_type.contains(key)
+                });
             }
         }
         debug!("{}", result.len());

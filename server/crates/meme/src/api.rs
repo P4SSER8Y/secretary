@@ -1,6 +1,6 @@
 use crate::{
     agent::{self, generate_thumbnail, generate_video_thumbnail, MetaData, ReencryptResponse, TokenPayload},
-    data::{BriefMetaData, FileContent, ListInfo, Password, UploadedImage},
+    data::{BriefMetaData, FileContent, ListInfo, Password, UpdateTagsRequest, UploadedImage},
 };
 use anyhow::{anyhow, Context};
 #[allow(unused_imports)]
@@ -420,6 +420,19 @@ async fn upload(
     }
 }
 
+#[post("/tag/<uuid>", data = "<body>")]
+async fn update_tags(
+    uuid: &str,
+    body: Json<UpdateTagsRequest>,
+    token: TokenPayload,
+    password: Password,
+) -> (Status, String) {
+    agent::update_tags(&token.name, uuid, body.tags.clone(), password.0.as_deref())
+        .await
+        .map(|_| (Status::Ok, "ok".to_string()))
+        .unwrap_or_else(|e| (Status::InternalServerError, format!("{}", e)))
+}
+
 #[get("/delete?<id>&<code>")]
 pub async fn delete_item(
     id: Option<&str>,
@@ -623,6 +636,7 @@ pub async fn build(
             dither_random,
             dither_uuid,
             update,
+            update_tags,
             reencrypt,
         ],
     ))
