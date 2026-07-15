@@ -166,6 +166,9 @@ async fn go(config: &Figment) -> Result<(), rocket::Error> {
     if is_enabled(&config, "inbox", false) {
         wtf = inbox::build("/inbox/api/", wtf, &config).await.unwrap();
     }
+    if is_enabled(&config, "recipe", false) {
+        wtf = recipe::build("/recipe/api/", wtf, &config).await.unwrap();
+    }
     if let Ok(ui) = config.find_value("ui_path") {
         if let Some(ui) = ui.as_str() {
             use rocket::fs::{FileServer, Options};

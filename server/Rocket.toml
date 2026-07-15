@@ -20,6 +20,7 @@ inbox = true
 tsdb = true
 meme = true
 album = true
+recipe = true
 
 [default.kindle]
 style = "<0,1,2,3>"

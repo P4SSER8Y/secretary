@@ -22,6 +22,7 @@ tsdb = { path = "crates/tsdb" }
 mqtt = { path = "crates/mqtt" }
 album = { path = "crates/album" }
 meme = { path = "crates/meme" }
+recipe = { path = "crates/recipe" }
 chrono = "0.4.31"
 rocket = "0.5.0"
 anyhow = "1.0.78"
