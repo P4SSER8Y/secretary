@@ -43,6 +43,7 @@ A Rocket (v0.5) web server organized as a Cargo workspace. The main binary at `s
 - **let_server_run** — WeChat bot agent powered by [LetServerRun](https://letserver.run/). Long-polling job loop with extensible executors (echo, shell).
 - **meme** — Personal media gallery with S3-backed storage, JWT auth via external gate, image processing (thumbnails, dithering for e-ink, video thumbnails via ffmpeg).
 - **qweather** — Weather forecast fetcher, powered by [QWeather API](https://dev.qweather.com/). Cron-driven periodic updates.
+- **recipe** — Shared meal ordering + step-guided cooking. Markdown-based recipe storage with YAML frontmatter, per-dish portion scaling, ingredient aggregation, polling-based multi-device sync. No auth required.
 - **tsdb** — Thin InfluxDB2 wrapper for time-series metrics.
 - **utils** — Shared utilities: sled-backed key-value store (`database::Db`), configurable data path.
 
@@ -53,8 +54,9 @@ Vite 5 + Vue 3 + TypeScript + Tailwind CSS + daisyUI. Multi-page app with three 
 - **inbox** — `/inbox/index.html`, pastebin frontend
 - **meme** — `/meme/index.html`, media gallery with waterfall/gallery/tag-cloud views
 - **kindle** — `/kindle/debug/index.html`, Kindle dashboard debug preview
+- **recipe** — `/recipe/index.html`, meal ordering (MenuPage) + step-guided cooking (CookingPage) with caramellatte daisyUI theme
 
-Dev server proxies `/inbox/api` and `/meme/i` to configurable backends.
+Dev server proxies `/inbox/api`, `/meme/i`, and `/recipe/api` to configurable backends.
 
 ### CI/CD
 
