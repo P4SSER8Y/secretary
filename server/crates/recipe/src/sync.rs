@@ -253,12 +253,21 @@ async fn sync_from_couchdb(
             .and_then(|e| e.to_str())
             .unwrap_or("");
         if is_image_ext(ext) {
-            let decoded = base64::engine::general_purpose::STANDARD
-                .decode(data)
-                .with_context(|| format!("Failed to decode base64: {}", rel))?;
-            std::fs::write(&file_path, &decoded)
-                .with_context(|| format!("Failed to write image: {:?}", file_path))?;
-            info!("Synced image: {}", rel);
+            // Strip whitespace that may have been introduced during chunk concatenation
+            let clean: String = data.chars().filter(|c| !c.is_whitespace()).collect();
+            match base64::engine::general_purpose::STANDARD.decode(&clean) {
+                Ok(decoded) => {
+                    std::fs::write(&file_path, &decoded)
+                        .with_context(|| format!("Failed to write image: {:?}", file_path))?;
+                    info!("Synced image: {}", rel);
+                }
+                Err(e) => {
+                    warn!("Base64 decode failed for {} ({} bytes, starts: {:?}): {} — saving raw",
+                        rel, data.len(), &data[..data.len().min(20)], e);
+                    std::fs::write(&file_path, data)
+                        .with_context(|| format!("Failed to write raw: {:?}", file_path))?;
+                }
+            }
         } else {
             std::fs::write(&file_path, data)
                 .with_context(|| format!("Failed to write file: {:?}", file_path))?;
