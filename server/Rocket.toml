@@ -22,6 +22,14 @@ meme = true
 album = true
 recipe = true
 
+[default.recipe.couchdb]
+url = ""
+db = ""
+prefix = ""
+username = ""
+password = ""
+enabled = false
+
 [default.kindle]
 style = "<0,1,2,3>"
 device_name = "kindle"

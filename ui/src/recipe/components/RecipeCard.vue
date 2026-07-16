@@ -23,7 +23,7 @@ const coverUrl = store.getCoverUrl(props.recipe.id, props.recipe.cover_image)
         :class="{ 'ring-2 ring-primary': selected, 'ring-1 ring-accent/50': othersSelected && !selected }"
     >
         <!-- Cover image — click to see detail -->
-        <figure class="aspect-square bg-base-300 relative cursor-pointer" @click="emit('detail', recipe.id)">
+        <figure class="aspect-[3/2] bg-base-300 relative cursor-pointer" @click="emit('detail', recipe.id)">
             <img
                 v-if="coverUrl"
                 :src="coverUrl"

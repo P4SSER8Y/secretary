@@ -64,7 +64,7 @@ function goBack() {
                 v-if="recipeDetail.cover_image"
                 :src="`api/image/${recipeDetail.id}`"
                 :alt="recipeDetail.name"
-                class="w-full max-h-64 object-cover rounded-lg mt-3"
+                class="w-full aspect-[3/2] object-cover rounded-lg mt-3"
             />
 
             <!-- Meta -->

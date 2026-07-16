@@ -96,6 +96,19 @@ function confirmDiners() {
     editingDiners.value = false
 }
 
+const syncing = ref(false)
+async function syncRecipes() {
+    if (syncing.value) return
+    syncing.value = true
+    try {
+        const res = await api.post<ApiResponse<string>>('recipes/sync')
+        if (res.data.ok) {
+            await store.loadRecipes(api)
+        }
+    } catch { /* ignore */ }
+    finally { syncing.value = false }
+}
+
 function isSelected(id: string): boolean {
     return store.menu?.menu_recipes.some(mr => mr.id === id) || false
 }
@@ -149,8 +162,8 @@ function goCooking() {
     <div class="min-h-dvh bg-base-100 text-base-content">
         <!-- Top bar -->
         <div class="navbar bg-base-200 shadow-sm px-2 gap-1 max-md:flex-wrap">
-            <button class="btn btn-sm btn-ghost" @click="showMenus = true; loadMenus()">
-                📋 菜单
+            <button class="btn btn-sm btn-ghost text-3xl" @click="showMenus = true; loadMenus()">
+                🍽️
             </button>
             <h1 class="text-base font-bold truncate max-w-32">{{ store.menu?.name || '加载中...' }}</h1>
             <!-- Diners -->
@@ -177,22 +190,28 @@ function goCooking() {
         </div>
 
         <!-- Category tabs -->
-        <div class="flex gap-1 px-3 py-2 overflow-x-auto">
-            <button
-                class="btn btn-sm"
-                :class="activeCategory === '' ? 'btn-primary' : 'btn-ghost'"
-                @click="activeCategory = ''"
-            >
-                全部
-            </button>
-            <button
-                v-for="cat in store.categories"
-                :key="cat"
-                class="btn btn-sm whitespace-nowrap"
-                :class="activeCategory === cat ? 'btn-primary' : 'btn-ghost'"
-                @click="activeCategory = cat"
-            >
-                {{ cat }}
+        <div class="flex items-center gap-1 px-3 py-2">
+            <div class="flex gap-1 overflow-x-auto flex-1">
+                <button
+                    class="btn btn-sm"
+                    :class="activeCategory === '' ? 'btn-primary' : 'btn-ghost'"
+                    @click="activeCategory = ''"
+                >
+                    全部
+                </button>
+                <button
+                    v-for="cat in store.categories"
+                    :key="cat"
+                    class="btn btn-sm whitespace-nowrap"
+                    :class="activeCategory === cat ? 'btn-primary' : 'btn-ghost'"
+                    @click="activeCategory = cat"
+                >
+                    {{ cat }}
+                </button>
+            </div>
+            <button class="btn btn-sm btn-ghost flex-shrink-0" :disabled="syncing" @click="syncRecipes">
+                <span v-if="syncing" class="loading loading-spinner loading-xs"></span>
+                <span v-else>🔄</span>
             </button>
         </div>
 
@@ -341,8 +360,8 @@ function goCooking() {
             <div class="max-w-lg mx-auto">
                 <div class="relative">
                     <img v-if="detailRecipe.cover_image" :src="`api/image/${detailRecipe.id}`" :alt="detailRecipe.name"
-                        class="w-full h-56 object-cover" />
-                    <div v-else class="w-full h-40 bg-base-300 flex items-center justify-center text-6xl">🍽️</div>
+                        class="w-full aspect-[3/2] object-cover" />
+                    <div v-else class="w-full aspect-[3/2] bg-base-300 flex items-center justify-center text-6xl">🍽️</div>
                     <button class="absolute top-3 left-3 btn btn-sm btn-circle btn-ghost bg-base-100/70"
                         @click="showRecipeDetail = false">✕</button>
                 </div>

@@ -2925,9 +2925,11 @@ name = "recipe"
 version = "0.25.2"
 dependencies = [
  "anyhow",
+ "base64 0.22.1",
  "chrono",
  "log",
  "rand 0.8.6",
+ "reqwest",
  "rocket",
  "serde",
  "serde_json",

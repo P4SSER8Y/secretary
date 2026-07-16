@@ -4,6 +4,7 @@ mod markdown;
 mod menus;
 pub mod models;
 mod recipes;
+pub mod sync;
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -21,25 +22,46 @@ use crate::models::RecipeMeta;
 pub static RECIPE_INDEX: std::sync::OnceLock<RwLock<HashMap<String, RecipeMeta>>> =
     std::sync::OnceLock::new();
 
+/// CouchDB sync config — initialized at startup if `[recipe.couchdb]` is configured.
+pub static COUCHDB_CONFIG: std::sync::OnceLock<Option<sync::CouchDbConfig>> =
+    std::sync::OnceLock::new();
+
+/// Tracks the last sync timestamp for auto-refresh throttling.
+pub static SYNC_STATE: std::sync::OnceLock<RwLock<sync::SyncState>> =
+    std::sync::OnceLock::new();
+
 pub async fn build(
     base: &'static str,
     build: Rocket<Build>,
-    _config: &Figment,
+    config: &Figment,
 ) -> Result<Rocket<Build>, anyhow::Error> {
     // Ensure data directories exist
     let data_path = utils::get_data_path();
     let recipes_dir = Path::new(data_path).join("recipes");
+    let raw_dir = recipes_dir.join("raw");
     let saved_dir = recipes_dir.join("saved");
-    tokio::fs::create_dir_all(&recipes_dir).await?;
+    tokio::fs::create_dir_all(&raw_dir).await?;
     tokio::fs::create_dir_all(&saved_dir).await?;
 
-    // Build the recipe index at startup
-    let index = indexer::scan_recipes(&recipes_dir).unwrap_or_default();
+    // Build the recipe index from raw/ at startup
+    let index = indexer::scan_recipes(&raw_dir).unwrap_or_default();
     RECIPE_INDEX.get_or_init(|| RwLock::new(index));
 
+    // Read optional CouchDB sync config
+    let couchdb_config: Option<sync::CouchDbConfig> = config
+        .extract_inner("recipe.couchdb")
+        .unwrap_or(None);
+    if couchdb_config.as_ref().map_or(false, |c| c.enabled) {
+        SYNC_STATE.get_or_init(|| RwLock::new(sync::SyncState::new()));
+        log::info!("CouchDB sync enabled: {} recipes prefix '{}'",
+            couchdb_config.as_ref().unwrap().db,
+            couchdb_config.as_ref().unwrap().prefix);
+    }
+    COUCHDB_CONFIG.get_or_init(|| couchdb_config);
+
     // Mount routes
-    let build = recipes::build(base, build, _config).await?;
-    let build = menus::build(base, build, _config).await?;
+    let build = recipes::build(base, build, config).await?;
+    let build = menus::build(base, build, config).await?;
     let build = build.mount("/recipe", routes![skill_md]);
     Ok(build)
 }
