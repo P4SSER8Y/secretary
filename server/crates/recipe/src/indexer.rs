@@ -32,10 +32,11 @@ pub fn scan_recipes(dir: &Path) -> anyhow::Result<HashMap<String, RecipeMeta>> {
 
         let raw = std::fs::read_to_string(&path).context("Failed to read recipe file")?;
         match markdown::parse_recipe(&raw) {
-            Ok(meta) => {
-                let cover = find_cover_image(dir, &meta.id);
-                let mut meta = meta;
-                meta.cover_image = cover;
+            Ok(mut meta) => {
+                // Frontmatter cover_image takes priority; fall back to auto-detect
+                if meta.cover_image.is_none() {
+                    meta.cover_image = find_cover_image(dir, &meta.id);
+                }
                 info!("Loaded recipe: {} ({})", meta.name, meta.id);
                 index.insert(meta.id.clone(), meta);
             }

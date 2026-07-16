@@ -11,12 +11,17 @@
 
 ## 封面图
 
-封面图放在 `data/recipes/` 目录下，支持以下两种方式（按优先级查找）：
+有三种方式指定封面图（按优先级）：
 
-1. `<id>.jpg` / `.png` / `.webp` / `.jpeg` — 与菜谱文件同名
-2. `<id>/cover.jpg` / `.png` / `.webp` / `.jpeg` — 放在以菜谱 ID 命名的子目录中
+1. **在 frontmatter 中显式指定** `cover_image`（推荐）— 路径相对于该 md 文件所在目录
+2. **自动探测**（frontmatter 未指定时）：
+   - `<id>.jpg` / `.png` / `.webp` / `.jpeg` — 与菜谱文件同名
+   - `<id>/cover.jpg` / `.png` / `.webp` / `.jpeg` — 放在以菜谱 ID 命名的子目录中
 
-示例：`hongshao-rou.jpg` 或 `hongshao-rou/cover.jpg`
+示例：
+- `cover_image: "hongshao-rou.jpg"` — 同目录下的图片
+- `cover_image: "hongshao-rou/cover.jpg"` — 子目录中的图片
+- 不写 `cover_image` — 服务按上述自动探测规则查找
 
 ## YAML Frontmatter 字段
 
@@ -38,6 +43,7 @@
 
 | 字段 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
+| `cover_image` | string | 自动探测 | 封面图文件名，路径相对于该 md 文件。如 `"hongshao-rou.jpg"` |
 | `adjustable` | bool | `true` | 是否允许在点菜时调整份量。设为 `false` 则禁用 +/- 按钮 |
 | `tags` | string[] | `[]` | 标签，如 `["家常", "猪肉", "红烧"]` |
 | `ingredients` | array | `[]` | 食材列表，见下方详细说明 |
@@ -124,6 +130,7 @@ prep_time: "15m"
 cook_time: "45m"
 servings: 4
 difficulty: "medium"
+cover_image: "hongshao-rou.jpg"
 adjustable: true
 tags:
   - 家常
