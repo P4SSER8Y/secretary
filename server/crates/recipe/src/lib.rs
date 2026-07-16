@@ -10,6 +10,9 @@ use std::path::Path;
 use std::sync::RwLock;
 
 use rocket::figment::Figment;
+use rocket::get;
+use rocket::http::ContentType;
+use rocket::routes;
 use rocket::{Build, Rocket};
 
 use crate::models::RecipeMeta;
@@ -37,5 +40,12 @@ pub async fn build(
     // Mount routes
     let build = recipes::build(base, build, _config).await?;
     let build = menus::build(base, build, _config).await?;
+    let build = build.mount("/recipe", routes![skill_md]);
     Ok(build)
+}
+
+/// Serve the recipe authoring guide at /recipe/SKILL.md
+#[get("/SKILL.md")]
+fn skill_md() -> (ContentType, &'static str) {
+    (ContentType::Plain, include_str!("../SKILL.md"))
 }
