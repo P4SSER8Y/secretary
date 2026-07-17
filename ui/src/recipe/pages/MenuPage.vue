@@ -96,6 +96,16 @@ function confirmDiners() {
     editingDiners.value = false
 }
 
+const viewMode = ref<'grid' | 'list'>('grid')
+
+const categoryCounts = computed(() => {
+    const counts: Record<string, number> = {}
+    store.recipes.forEach(r => {
+        counts[r.category] = (counts[r.category] || 0) + 1
+    })
+    return counts
+})
+
 const syncing = ref(false)
 async function syncRecipes() {
     if (syncing.value) return
@@ -197,7 +207,7 @@ function goCooking() {
                     :class="activeCategory === '' ? 'btn-primary' : 'btn-ghost'"
                     @click="activeCategory = ''"
                 >
-                    全部
+                    全部 <span class="badge badge-sm ml-0.5">{{ store.recipes.length }}</span>
                 </button>
                 <button
                     v-for="cat in store.categories"
@@ -206,18 +216,30 @@ function goCooking() {
                     :class="activeCategory === cat ? 'btn-primary' : 'btn-ghost'"
                     @click="activeCategory = cat"
                 >
-                    {{ cat }}
+                    {{ cat }} <span class="badge badge-sm ml-0.5">{{ categoryCounts[cat] || 0 }}</span>
                 </button>
             </div>
-            <button class="btn btn-sm btn-ghost flex-shrink-0" :disabled="syncing" @click="syncRecipes">
-                <span v-if="syncing" class="loading loading-spinner loading-xs"></span>
-                <span v-else>🔄</span>
-            </button>
+            <!-- View toggle -->
+            <div class="join flex-shrink-0">
+                <button
+                    class="btn btn-sm btn-ghost join-item"
+                    :class="{ 'btn-active': viewMode === 'grid' }"
+                    @click="viewMode = 'grid'"
+                    title="网格视图"
+                >▦</button>
+                <button
+                    class="btn btn-sm btn-ghost join-item"
+                    :class="{ 'btn-active': viewMode === 'list' }"
+                    @click="viewMode = 'list'"
+                    title="列表视图"
+                >☰</button>
+            </div>
         </div>
 
         <!-- Recipe grid -->
         <div class="px-2 pb-24">
-            <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+            <!-- Grid view -->
+            <div v-if="viewMode === 'grid'" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
                 <RecipeCard
                     v-for="r in filteredRecipes"
                     :key="r.id"
@@ -228,6 +250,46 @@ function goCooking() {
                     @detail="openRecipeDetail(r.id)"
                 />
             </div>
+            <!-- List view -->
+            <div v-else class="flex flex-col gap-1">
+                <div
+                    v-for="r in filteredRecipes"
+                    :key="r.id"
+                    class="flex items-center gap-2 p-2 rounded bg-base-200 hover:bg-base-300 transition-colors cursor-pointer"
+                    :class="{ 'ring-2 ring-primary': isSelected(r.id) }"
+                    @click="openRecipeDetail(r.id)"
+                >
+                    <!-- Cover thumbnail -->
+                    <img
+                        v-if="r.cover_image"
+                        :src="`api/image/${r.id}`"
+                        :alt="r.name"
+                        class="w-12 h-12 rounded object-cover flex-shrink-0"
+                        loading="lazy"
+                    />
+                    <div v-else class="w-12 h-12 rounded bg-base-300 flex items-center justify-center text-2xl flex-shrink-0">
+                        🍽️
+                    </div>
+                    <!-- Info -->
+                    <div class="flex-1 min-w-0">
+                        <div class="text-sm font-semibold truncate">{{ r.name }}</div>
+                        <div class="text-xs text-base-content/50">
+                            ⏱ {{ r.cook_time }} · 👥 {{ r.servings }}人份
+                        </div>
+                    </div>
+                    <!-- Toggle button -->
+                    <button
+                        class="btn btn-sm flex-shrink-0"
+                        :class="isSelected(r.id) ? 'btn-error btn-outline' : 'btn-primary'"
+                        @click.stop="onToggle(r.id)"
+                    >
+                        {{ isSelected(r.id) ? '移除' : '加入' }}
+                    </button>
+                </div>
+                <div v-if="filteredRecipes.length === 0" class="text-center text-base-content/40 py-8">
+                    暂无食谱
+                </div>
+            </div>
         </div>
 
         <!-- Saved menus drawer -->
@@ -237,9 +299,15 @@ function goCooking() {
                     <h2 class="text-lg font-bold">已保存菜单</h2>
                     <button class="btn btn-sm btn-ghost" @click="showMenus = false">✕</button>
                 </div>
-                <button class="btn btn-sm btn-primary w-full mb-3" @click="openNewMenuDialog">
-                    + 新建菜单
-                </button>
+                <div class="flex items-center gap-2 mb-3">
+                    <button class="btn btn-sm btn-ghost flex-shrink-0" :disabled="syncing" @click="syncRecipes">
+                        <span v-if="syncing" class="loading loading-spinner loading-xs"></span>
+                        <span v-else>🔄 同步</span>
+                    </button>
+                    <button class="btn btn-sm btn-primary flex-1" @click="openNewMenuDialog">
+                        + 新建菜单
+                    </button>
+                </div>
                 <div class="space-y-2">
                     <div
                         v-for="m in menus"
