@@ -69,7 +69,9 @@ async fn get_image(id: &str) -> Option<(ContentType, Vec<u8>)> {
 
     let data_path = utils::get_data_path();
     let raw_dir = Path::new(data_path).join("recipes").join("raw");
-    let img_path = raw_dir.join(cover);
+
+    // CouchDB sync puts images under raw/assets/{cover}
+    let img_path = raw_dir.join("assets").join(cover);
 
     let data = std::fs::read(&img_path).ok()?;
     let ct = ContentType::from_extension(
