@@ -202,38 +202,35 @@ function goCooking() {
         <!-- Category tabs -->
         <div class="flex items-center gap-1 px-3 py-2">
             <div class="flex gap-1 overflow-x-auto flex-1">
-                <button
-                    class="btn btn-sm"
-                    :class="activeCategory === '' ? 'btn-primary' : 'btn-ghost'"
-                    @click="activeCategory = ''"
-                >
-                    全部 <span class="badge badge-sm ml-0.5">{{ store.recipes.length }}</span>
-                </button>
-                <button
-                    v-for="cat in store.categories"
-                    :key="cat"
-                    class="btn btn-sm whitespace-nowrap"
-                    :class="activeCategory === cat ? 'btn-primary' : 'btn-ghost'"
-                    @click="activeCategory = cat"
-                >
-                    {{ cat }} <span class="badge badge-sm ml-0.5">{{ categoryCounts[cat] || 0 }}</span>
-                </button>
+                <div class="indicator">
+                    <span v-if="store.recipes.length" class="indicator-item indicator-top indicator-start badge badge-xs">{{ store.recipes.length }}</span>
+                    <button
+                        class="btn btn-sm"
+                        :class="activeCategory === '' ? 'btn-primary' : 'btn-ghost'"
+                        @click="activeCategory = ''"
+                    >
+                        全部
+                    </button>
+                </div>
+                <div v-for="cat in store.categories" :key="cat" class="indicator">
+                    <span v-if="categoryCounts[cat]" class="indicator-item indicator-top indicator-start badge badge-xs">{{ categoryCounts[cat] }}</span>
+                    <button
+                        class="btn btn-sm whitespace-nowrap"
+                        :class="activeCategory === cat ? 'btn-primary' : 'btn-ghost'"
+                        @click="activeCategory = cat"
+                    >
+                        {{ cat }}
+                    </button>
+                </div>
             </div>
             <!-- View toggle -->
-            <div class="join flex-shrink-0">
-                <button
-                    class="btn btn-sm btn-ghost join-item"
-                    :class="{ 'btn-active': viewMode === 'grid' }"
-                    @click="viewMode = 'grid'"
-                    title="网格视图"
-                >▦</button>
-                <button
-                    class="btn btn-sm btn-ghost join-item"
-                    :class="{ 'btn-active': viewMode === 'list' }"
-                    @click="viewMode = 'list'"
-                    title="列表视图"
-                >☰</button>
-            </div>
+            <button
+                class="btn btn-sm btn-ghost flex-shrink-0"
+                :title="viewMode === 'grid' ? '切换到列表视图' : '切换到网格视图'"
+                @click="viewMode = viewMode === 'grid' ? 'list' : 'grid'"
+            >
+                {{ viewMode === 'grid' ? '☰' : '▦' }}
+            </button>
         </div>
 
         <!-- Recipe grid -->
