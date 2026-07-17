@@ -36,6 +36,26 @@ const MEALS = ['早餐', '午餐', '下午茶', '晚餐', '夜宵']
 // ── Recipe detail modal ──
 const showRecipeDetail = ref(false)
 const detailRecipe = ref<RecipeMeta | null>(null)
+const detailPortions = ref(0)
+
+const detailScaledIngredients = computed(() => {
+    if (!detailRecipe.value) return []
+    const ratio = detailPortions.value / detailRecipe.value.servings
+    if (ratio === 1) return detailRecipe.value.ingredients
+    return detailRecipe.value.ingredients.map(ing => ({
+        ...ing,
+        amount: ing.amount != null ? Math.round(ing.amount * ratio * 100) / 100 : undefined,
+    }))
+})
+
+function detailAdjust(delta: number) {
+    const val = Math.max(0.5, Math.round((detailPortions.value + delta) * 2) / 2)
+    if (val === detailPortions.value) return
+    detailPortions.value = val
+    if (detailRecipe.value && isSelected(detailRecipe.value.id)) {
+        store.adjustPortion(api, detailRecipe.value.id, delta)
+    }
+}
 
 // ── Diners edit ──
 const editingDiners = ref(false)
@@ -65,6 +85,22 @@ function dateDisplay(dateStr: string): string {
     return `${parts[1]}-${parts[2]}`
 }
 
+function dayOfWeek(dateStr: string): string {
+    if (!dateStr) return ''
+    const d = new Date(dateStr + 'T00:00:00')
+    const days = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
+    return days[d.getDay()]
+}
+
+function changeDate(delta: number) {
+    const d = new Date(newDate.value + 'T00:00:00')
+    d.setDate(d.getDate() + delta)
+    const y = d.getFullYear()
+    const m = String(d.getMonth() + 1).padStart(2, '0')
+    const dd = String(d.getDate()).padStart(2, '0')
+    newDate.value = `${y}-${m}-${dd}`
+}
+
 function openNewMenuDialog() {
     newDate.value = todayStr()
     newMeal.value = defaultMeal()
@@ -80,8 +116,33 @@ async function createNewMenu() {
     await store.newMenu(api, name, newDiners.value)
 }
 
+const CATEGORY_ORDER = ['肉', '菜', '汤']
+
+const orderedCategories = computed(() => {
+    const existing = new Set(store.categories)
+    const cats = CATEGORY_ORDER.filter(c => existing.has(c))
+    const otherCount = store.categories.filter(c => !CATEGORY_ORDER.includes(c)).length
+    if (otherCount > 0) cats.push('其它')
+    return cats
+})
+
+const slideDirection = ref<'left' | 'right'>('right')
+
+function categoryIndex(cat: string): number {
+    if (cat === '') return orderedCategories.value.length // "全部" is last
+    return orderedCategories.value.indexOf(cat)
+}
+
+function switchCategory(cat: string) {
+    const oldIdx = categoryIndex(activeCategory.value)
+    const newIdx = categoryIndex(cat)
+    slideDirection.value = newIdx > oldIdx ? 'left' : 'right'
+    activeCategory.value = cat
+}
+
 const filteredRecipes = computed(() => {
     if (!activeCategory.value) return store.recipes
+    if (activeCategory.value === '其它') return store.recipes.filter((r) => !CATEGORY_ORDER.includes(r.category))
     return store.recipes.filter((r) => r.category === activeCategory.value)
 })
 
@@ -92,7 +153,7 @@ function startEditDiners() {
 
 function confirmDiners() {
     const n = dinersInput.value
-    if (n >= 1 && n <= 9) store.updateDiners(api, n)
+    if (n >= 1 && n <= 8) store.updateDiners(api, n)
     editingDiners.value = false
 }
 
@@ -102,7 +163,8 @@ watch(viewMode, (v) => localStorage.setItem('recipe-view-mode', v))
 const categoryCounts = computed(() => {
     const counts: Record<string, number> = {}
     store.recipes.forEach(r => {
-        counts[r.category] = (counts[r.category] || 0) + 1
+        const cat = CATEGORY_ORDER.includes(r.category) ? r.category : '其它'
+        counts[cat] = (counts[cat] || 0) + 1
     })
     return counts
 })
@@ -134,7 +196,29 @@ function onToggle(id: string) {
 
 async function openRecipeDetail(id: string) {
     detailRecipe.value = await store.loadRecipeDetail(api, id)
-    if (detailRecipe.value) showRecipeDetail.value = true
+    if (detailRecipe.value) {
+        const existing = store.menu?.menu_recipes.find(mr => mr.id === id)
+        detailPortions.value = existing ? existing.portions : detailRecipe.value.servings
+        showRecipeDetail.value = true
+    }
+}
+
+async function addWithPortions() {
+    if (!detailRecipe.value || !store.menu?.filename) return
+    const id = detailRecipe.value.id
+    if (isSelected(id)) {
+        onToggle(id)
+        showRecipeDetail.value = false
+        return
+    }
+    const desired = detailPortions.value
+    onToggle(id)
+    await new Promise(r => setTimeout(r, 300))
+    const mr = store.menu?.menu_recipes.find(mr => mr.id === id)
+    if (mr && mr.portions !== desired) {
+        store.adjustPortion(api, id, Math.round((desired - mr.portions) * 2) / 2)
+    }
+    showRecipeDetail.value = false
 }
 
 const selectedCount = computed(() => store.menu?.menu_recipes.length || 0)
@@ -185,18 +269,18 @@ function goCooking() {
                 v-else
                 v-model.number="dinersInput"
                 type="number"
-                min="1" max="9"
+                min="1" max="8"
                 class="input input-sm input-bordered w-14"
                 @keyup.enter="confirmDiners"
                 @blur="confirmDiners"
             />
             <div class="flex-1"></div>
             <button
-                class="btn btn-sm"
+                class="btn btn-sm gap-1"
                 :class="selectedCount > 0 ? 'btn-accent' : 'btn-ghost'"
                 @click="showSummary = !showSummary"
             >
-                {{ selectedCount }}道菜
+                <span class="badge badge-sm">{{ selectedCount }}</span>道菜
             </button>
         </div>
 
@@ -204,20 +288,20 @@ function goCooking() {
         <div class="flex items-center gap-1 px-3 py-2">
             <div class="flex gap-1 overflow-x-auto flex-1">
                 <button
-                    class="btn btn-sm"
-                    :class="activeCategory === '' ? 'btn-primary' : 'btn-ghost'"
-                    @click="activeCategory = ''"
-                >
-                    全部 <span class="badge badge-sm ml-0.5">{{ store.recipes.length }}</span>
-                </button>
-                <button
-                    v-for="cat in store.categories"
+                    v-for="cat in orderedCategories"
                     :key="cat"
                     class="btn btn-sm whitespace-nowrap"
                     :class="activeCategory === cat ? 'btn-primary' : 'btn-ghost'"
-                    @click="activeCategory = cat"
+                    @click="switchCategory(cat)"
                 >
                     {{ cat }} <span class="badge badge-sm ml-0.5">{{ categoryCounts[cat] || 0 }}</span>
+                </button>
+                <button
+                    class="btn btn-sm"
+                    :class="activeCategory === '' ? 'btn-primary' : 'btn-ghost'"
+                    @click="switchCategory('')"
+                >
+                    全部 <span class="badge badge-sm ml-0.5">{{ store.recipes.length }}</span>
                 </button>
             </div>
             <!-- View toggle -->
@@ -231,7 +315,8 @@ function goCooking() {
         </div>
 
         <!-- Recipe grid -->
-        <div class="px-2 pb-24">
+        <Transition :name="'slide-' + slideDirection" mode="out-in">
+            <div :key="activeCategory" class="px-2 pb-24">
             <!-- Grid view -->
             <div v-if="viewMode === 'grid'" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
                 <RecipeCard
@@ -285,6 +370,7 @@ function goCooking() {
                 </div>
             </div>
         </div>
+        </Transition>
 
         <!-- Saved menus drawer -->
         <div v-if="showMenus" class="fixed inset-0 z-50 flex" @click.self="showMenus = false">
@@ -326,7 +412,7 @@ function goCooking() {
                     </div>
                 </div>
             </div>
-            <div class="flex-1 bg-black/50"></div>
+            <div class="flex-1 bg-black/50" @click="showMenus = false"></div>
         </div>
 
         <!-- Summary overlay: selected dishes → ingredients → cooking -->
@@ -390,7 +476,12 @@ function goCooking() {
                 <div class="flex flex-col gap-3">
                     <label class="form-control">
                         <span class="label-text">日期</span>
-                        <input v-model="newDate" type="date" class="input input-bordered input-sm" />
+                        <div class="flex items-center gap-1">
+                            <button class="btn btn-sm btn-ghost w-7 h-7" @click="changeDate(-1)">◀</button>
+                            <input v-model="newDate" type="date" class="input input-bordered input-sm flex-1" />
+                            <button class="btn btn-sm btn-ghost w-7 h-7" @click="changeDate(1)">▶</button>
+                            <span class="text-sm text-base-content/60 whitespace-nowrap">{{ dayOfWeek(newDate) }}</span>
+                        </div>
                     </label>
                     <label class="form-control">
                         <span class="label-text">餐次</span>
@@ -402,7 +493,7 @@ function goCooking() {
                     <label class="form-control">
                         <span class="label-text">用餐人数</span>
                         <div class="flex gap-1 mt-1">
-                            <button v-for="n in 9" :key="n" class="btn btn-sm w-8 h-8"
+                            <button v-for="n in 8" :key="n" class="btn btn-sm w-8 h-8"
                                 :class="newDiners === n ? 'btn-primary' : 'btn-ghost'" @click="newDiners = n">{{ n }}</button>
                         </div>
                     </label>
@@ -420,28 +511,42 @@ function goCooking() {
         <!-- Recipe detail modal -->
         <div v-if="showRecipeDetail && detailRecipe" class="fixed inset-0 z-50 bg-base-100 overflow-y-auto">
             <div class="max-w-lg mx-auto">
-                <div class="relative">
-                    <img v-if="detailRecipe.cover_image" :src="`api/image/${detailRecipe.id}`" :alt="detailRecipe.name"
-                        class="w-full aspect-[3/2] object-cover" />
-                    <div v-else class="w-full aspect-[3/2] bg-base-300 flex items-center justify-center text-6xl">🍽️</div>
-                    <button class="absolute top-3 left-3 btn btn-sm btn-circle btn-ghost bg-base-100/70"
+                <!-- Cover image -->
+                <div v-if="detailRecipe.cover_image" class="relative">
+                    <img :src="`api/image/${detailRecipe.id}`" :alt="detailRecipe.name"
+                        class="w-full aspect-[5/3] object-cover cursor-pointer" @click="showRecipeDetail = false" />
+                    <button class="absolute top-3 right-3 btn btn-sm btn-circle btn-ghost bg-base-100/70"
                         @click="showRecipeDetail = false">✕</button>
                 </div>
                 <div class="px-4 pb-24 pt-3">
-                    <h1 class="text-xl font-bold">{{ detailRecipe.name }}</h1>
+                    <div class="flex items-center justify-between mb-2">
+                        <h1 class="text-xl font-bold">{{ detailRecipe.name }}</h1>
+                        <button v-if="!detailRecipe.cover_image" class="btn btn-sm btn-circle btn-ghost"
+                            @click="showRecipeDetail = false">✕</button>
+                    </div>
                     <div class="flex gap-3 text-base text-base-content/60 mt-1 mb-4">
                         <span>⏱ {{ detailRecipe.cook_time }}</span>
                         <span>👥 {{ detailRecipe.servings }}人份</span>
                         <span>📊 {{ detailRecipe.difficulty }}</span>
                     </div>
+                    <!-- Portion selector -->
+                    <div v-if="detailRecipe.adjustable" class="flex items-center gap-2 mb-3">
+                        <span class="text-sm">份量</span>
+                        <button class="btn btn-xs btn-ghost w-6 h-6"
+                            @click="detailAdjust(-0.5)">−</button>
+                        <span class="badge badge-sm">{{ detailPortions }}份</span>
+                        <button class="btn btn-xs btn-ghost w-6 h-6"
+                            @click="detailAdjust(0.5)">+</button>
+                        <span class="text-xs text-base-content/50">(原{{ detailRecipe.servings }}人份)</span>
+                    </div>
                     <button class="btn btn-sm w-full mb-4"
                         :class="isSelected(detailRecipe.id) ? 'btn-error btn-outline' : 'btn-primary'"
-                        @click="onToggle(detailRecipe.id)">
-                        {{ isSelected(detailRecipe.id) ? '从菜单中移除' : '➕ 加入菜单' }}
+                        @click="addWithPortions()">
+                        {{ isSelected(detailRecipe.id) ? '从菜单中移除' : `➕ 加入菜单 (${detailPortions}份)` }}
                     </button>
                     <h2 class="text-base font-semibold mb-2">食材</h2>
                     <div class="text-base space-y-1 mb-4">
-                        <div v-for="ing in detailRecipe.ingredients" :key="ing.name"
+                        <div v-for="ing in detailScaledIngredients" :key="ing.name"
                             class="flex justify-between py-1 border-b border-base-200">
                             <span>{{ ing.name }}</span>
                             <span class="text-base-content/60">{{ ing.amount ? `${ing.amount}${ing.unit || ''}` : ing.hint || '' }}</span>
@@ -466,4 +571,29 @@ function goCooking() {
 
 <style scoped lang="postcss">
 @reference "tailwindcss";
+
+.slide-left-enter-active,
+.slide-left-leave-active,
+.slide-right-enter-active,
+.slide-right-leave-active {
+    transition: transform 0.15s ease, opacity 0.15s ease;
+}
+
+.slide-left-enter-from {
+    transform: translateX(60px);
+    opacity: 0;
+}
+.slide-left-leave-to {
+    transform: translateX(-60px);
+    opacity: 0;
+}
+
+.slide-right-enter-from {
+    transform: translateX(-60px);
+    opacity: 0;
+}
+.slide-right-leave-to {
+    transform: translateX(60px);
+    opacity: 0;
+}
 </style>

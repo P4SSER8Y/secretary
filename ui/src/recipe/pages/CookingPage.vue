@@ -13,6 +13,24 @@ const loading = ref(false)
 
 const dishList = computed(() => store.menu?.recipes || [])
 
+const scaledIngredients = computed(() => {
+    if (!recipeDetail.value || !store.menu) return recipeDetail.value?.ingredients || []
+    const mr = store.menu.menu_recipes.find(mr => mr.id === recipeDetail.value!.id)
+    if (!mr) return recipeDetail.value.ingredients
+    const ratio = mr.portions / recipeDetail.value.servings
+    if (ratio === 1) return recipeDetail.value.ingredients
+    return recipeDetail.value.ingredients.map(ing => ({
+        ...ing,
+        amount: ing.amount != null ? Math.round(ing.amount * ratio * 100) / 100 : undefined,
+    }))
+})
+
+const currentPortions = computed(() => {
+    if (!recipeDetail.value || !store.menu) return null
+    const mr = store.menu.menu_recipes.find(mr => mr.id === recipeDetail.value!.id)
+    return mr ? mr.portions : null
+})
+
 async function selectDish(index: number) {
     selectedDishIndex.value = index
     const dish = dishList.value[index]
@@ -25,6 +43,11 @@ async function selectDish(index: number) {
 // Auto-select first dish
 if (dishList.value.length > 0 && !recipeDetail.value) {
     selectDish(0)
+}
+
+function onAdjust(delta: number) {
+    if (!recipeDetail.value) return
+    store.adjustPortion(api, recipeDetail.value.id, delta)
 }
 
 function goBack() {
@@ -64,7 +87,7 @@ function goBack() {
                 v-if="recipeDetail.cover_image"
                 :src="`api/image/${recipeDetail.id}`"
                 :alt="recipeDetail.name"
-                class="w-full aspect-[3/2] object-cover rounded-lg mt-3"
+                class="w-full aspect-[5/3] object-cover rounded-lg mt-3"
             />
 
             <!-- Meta -->
@@ -74,11 +97,25 @@ function goBack() {
                 <span>👥 {{ recipeDetail.servings }}人份</span>
             </div>
 
+            <!-- Portion control -->
+            <div v-if="recipeDetail.adjustable" class="flex items-center gap-2 mb-4 p-2 rounded bg-base-200">
+                <span class="text-sm">份量</span>
+                <button class="btn btn-xs btn-ghost w-6 h-6" @click="onAdjust(-0.5)">−</button>
+                <span class="badge badge-sm">{{ currentPortions ?? recipeDetail.servings }}份</span>
+                <button class="btn btn-xs btn-ghost w-6 h-6" @click="onAdjust(0.5)">+</button>
+                <span class="text-xs text-base-content/50">(原{{ recipeDetail.servings }}人份)</span>
+            </div>
+
             <!-- Ingredients -->
             <div class="mb-4">
-                <h3 class="text-base font-semibold mb-2">食材</h3>
+                <h3 class="text-base font-semibold mb-2">
+                    食材
+                    <span v-if="currentPortions && currentPortions !== recipeDetail.servings" class="text-base-content/50 font-normal text-sm ml-1">
+                        ({{ recipeDetail.servings }}人份 → {{ currentPortions }}份)
+                    </span>
+                </h3>
                 <div class="text-base space-y-1">
-                    <div v-for="ing in recipeDetail.ingredients" :key="ing.name" class="flex justify-between">
+                    <div v-for="ing in scaledIngredients" :key="ing.name" class="flex justify-between">
                         <span>{{ ing.name }}</span>
                         <span class="text-base-content/60">
                             {{ ing.amount ? `${ing.amount}${ing.unit || ''}` : ing.hint || '' }}
