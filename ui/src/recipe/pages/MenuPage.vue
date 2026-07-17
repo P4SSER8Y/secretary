@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, getCurrentInstance } from 'vue'
+import { ref, computed, watch, getCurrentInstance } from 'vue'
 import type { AxiosInstance } from 'axios'
 import { useRecipeStore } from '../lib/store'
 import RecipeCard from '../components/RecipeCard.vue'
@@ -96,7 +96,8 @@ function confirmDiners() {
     editingDiners.value = false
 }
 
-const viewMode = ref<'grid' | 'list'>('grid')
+const viewMode = ref<'grid' | 'list'>((localStorage.getItem('recipe-view-mode') as 'grid' | 'list') || 'grid')
+watch(viewMode, (v) => localStorage.setItem('recipe-view-mode', v))
 
 const categoryCounts = computed(() => {
     const counts: Record<string, number> = {}
@@ -202,26 +203,22 @@ function goCooking() {
         <!-- Category tabs -->
         <div class="flex items-center gap-1 px-3 py-2">
             <div class="flex gap-1 overflow-x-auto flex-1">
-                <div class="indicator">
-                    <span v-if="store.recipes.length" class="indicator-item indicator-top indicator-start badge badge-xs">{{ store.recipes.length }}</span>
-                    <button
-                        class="btn btn-sm"
-                        :class="activeCategory === '' ? 'btn-primary' : 'btn-ghost'"
-                        @click="activeCategory = ''"
-                    >
-                        全部
-                    </button>
-                </div>
-                <div v-for="cat in store.categories" :key="cat" class="indicator">
-                    <span v-if="categoryCounts[cat]" class="indicator-item indicator-top indicator-start badge badge-xs">{{ categoryCounts[cat] }}</span>
-                    <button
-                        class="btn btn-sm whitespace-nowrap"
-                        :class="activeCategory === cat ? 'btn-primary' : 'btn-ghost'"
-                        @click="activeCategory = cat"
-                    >
-                        {{ cat }}
-                    </button>
-                </div>
+                <button
+                    class="btn btn-sm"
+                    :class="activeCategory === '' ? 'btn-primary' : 'btn-ghost'"
+                    @click="activeCategory = ''"
+                >
+                    全部 <span class="badge badge-sm ml-0.5">{{ store.recipes.length }}</span>
+                </button>
+                <button
+                    v-for="cat in store.categories"
+                    :key="cat"
+                    class="btn btn-sm whitespace-nowrap"
+                    :class="activeCategory === cat ? 'btn-primary' : 'btn-ghost'"
+                    @click="activeCategory = cat"
+                >
+                    {{ cat }} <span class="badge badge-sm ml-0.5">{{ categoryCounts[cat] || 0 }}</span>
+                </button>
             </div>
             <!-- View toggle -->
             <button
