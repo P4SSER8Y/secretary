@@ -11,7 +11,42 @@ const selectedDishIndex = ref(0)
 const recipeDetail = ref<RecipeMeta | null>(null)
 const loading = ref(false)
 
-const dishList = computed(() => store.menu?.recipes || [])
+// Combined dish list: recipes + custom dishes
+interface DishTab {
+    id: string
+    name: string
+    isCustom: boolean
+    portions?: number
+}
+
+const dishList = computed<DishTab[]>(() => {
+    const recipes: DishTab[] = (store.menu?.recipes || []).map(r => ({
+        id: r.id,
+        name: r.name,
+        isCustom: false,
+    }))
+    const customs: DishTab[] = (store.menu?.custom_dishes || []).map((cd, i) => ({
+        id: `__custom__${i}`,
+        name: cd.name,
+        isCustom: true,
+        portions: cd.portions,
+    }))
+    return [...recipes, ...customs]
+})
+
+const selectedIsCustom = computed(() => dishList.value[selectedDishIndex.value]?.isCustom ?? false)
+const currentCustomPortions = computed(() => {
+    const d = dishList.value[selectedDishIndex.value]
+    return d?.isCustom ? d.portions : null
+})
+
+function scaleIng(ing: import('../lib/structs').Ingredient, ratio: number): import('../lib/structs').Ingredient {
+    return {
+        ...ing,
+        amount: ing.amount != null ? Math.round(ing.amount * ratio * 100) / 100 : undefined,
+        sub_ingredients: ing.sub_ingredients?.map(sub => scaleIng(sub, ratio)),
+    }
+}
 
 const scaledIngredients = computed(() => {
     if (!recipeDetail.value || !store.menu) return recipeDetail.value?.ingredients || []
@@ -19,10 +54,7 @@ const scaledIngredients = computed(() => {
     if (!mr) return recipeDetail.value.ingredients
     const ratio = mr.portions / recipeDetail.value.servings
     if (ratio === 1) return recipeDetail.value.ingredients
-    return recipeDetail.value.ingredients.map(ing => ({
-        ...ing,
-        amount: ing.amount != null ? Math.round(ing.amount * ratio * 100) / 100 : undefined,
-    }))
+    return recipeDetail.value.ingredients.map(ing => scaleIng(ing, ratio))
 })
 
 const currentPortions = computed(() => {
@@ -35,6 +67,10 @@ async function selectDish(index: number) {
     selectedDishIndex.value = index
     const dish = dishList.value[index]
     if (!dish) return
+    if (dish.isCustom) {
+        recipeDetail.value = null
+        return
+    }
     loading.value = true
     recipeDetail.value = await store.loadRecipeDetail(api, dish.id)
     loading.value = false
@@ -48,6 +84,15 @@ if (dishList.value.length > 0 && !recipeDetail.value) {
 function onAdjust(delta: number) {
     if (!recipeDetail.value) return
     store.adjustPortion(api, recipeDetail.value.id, delta)
+}
+
+function onAdjustCustom(delta: number) {
+    const d = dishList.value[selectedDishIndex.value]
+    if (!d?.isCustom || d.portions == null) return
+    const newPortion = Math.max(0.5, Math.round((d.portions + delta) * 2) / 2)
+    // Extract the custom dish index from the id
+    const idx = parseInt(d.id.replace('__custom__', ''))
+    store.adjustCustomPortion(api, idx, newPortion)
 }
 
 function goBack() {
@@ -76,8 +121,24 @@ function goBack() {
             </button>
         </div>
 
+        <!-- Custom dish: simple title-only view -->
+        <div v-if="selectedIsCustom" class="px-4 pb-24">
+            <div class="text-center py-20">
+                <div class="text-6xl mb-6">🍽️</div>
+                <h1 class="text-2xl font-bold mb-2">{{ dishList[selectedDishIndex]?.name }}</h1>
+                <p class="text-base text-base-content/50 mb-4">自定义菜品（无详细步骤）</p>
+                <!-- Portion control -->
+                <div v-if="currentCustomPortions != null" class="flex items-center justify-center gap-2 p-2 rounded bg-base-200 w-fit mx-auto">
+                    <span class="text-sm">份量</span>
+                    <button class="btn btn-xs btn-ghost w-6 h-6" @click="onAdjustCustom(-0.5)">−</button>
+                    <span class="badge badge-sm">{{ currentCustomPortions }}份</span>
+                    <button class="btn btn-xs btn-ghost w-6 h-6" @click="onAdjustCustom(0.5)">+</button>
+                </div>
+            </div>
+        </div>
+
         <!-- Recipe content -->
-        <div v-if="loading" class="flex justify-center py-20">
+        <div v-else-if="loading" class="flex justify-center py-20">
             <span class="loading loading-spinner loading-lg"></span>
         </div>
 
@@ -115,12 +176,34 @@ function goBack() {
                     </span>
                 </h3>
                 <div class="text-base space-y-1">
-                    <div v-for="ing in scaledIngredients" :key="ing.name" class="flex justify-between">
-                        <span>{{ ing.name }}</span>
-                        <span class="text-base-content/60">
-                            {{ ing.amount ? `${ing.amount}${ing.unit || ''}` : ing.hint || '' }}
-                        </span>
-                    </div>
+                    <template v-for="ing in scaledIngredients" :key="ing.name">
+                        <!-- Compound ingredient group -->
+                        <div v-if="ing.sub_ingredients && ing.sub_ingredients.length > 0"
+                            class="rounded bg-base-200 overflow-hidden"
+                        >
+                            <div class="flex items-center gap-2 px-3 py-1.5 bg-base-300/50">
+                                <span class="text-sm font-bold">📦 {{ ing.name }}</span>
+                                <span v-if="ing.hint" class="text-xs text-base-content/50">{{ ing.hint }}</span>
+                            </div>
+                            <div class="px-2 py-1 space-y-0.5">
+                                <div v-for="(sub, j) in ing.sub_ingredients" :key="j"
+                                    class="flex justify-between py-0.5 pl-4"
+                                >
+                                    <span class="text-sm">{{ sub.name }}</span>
+                                    <span class="text-sm text-base-content/60">
+                                        {{ sub.amount ? `${sub.amount}${sub.unit || ''}` : sub.hint || '' }}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Flat ingredient -->
+                        <div v-else class="flex justify-between">
+                            <span>{{ ing.name }}</span>
+                            <span class="text-base-content/60">
+                                {{ ing.amount ? `${ing.amount}${ing.unit || ''}` : ing.hint || '' }}
+                            </span>
+                        </div>
+                    </template>
                 </div>
             </div>
 

@@ -92,10 +92,14 @@ pub fn subscribe(
     callback: impl Fn(Vec<u8>) + Send + Sync + 'static,
 ) -> anyhow::Result<()> {
     let cb: TopicCallback = Arc::new(callback);
-    SUBSCRIBERS
-        .get()
-        .ok_or(anyhow::anyhow!("mqtt not initialized"))?
-        .write()
+    let subs = match SUBSCRIBERS.get() {
+        Some(s) => s,
+        None => {
+            log::warn!("mqtt not initialized, skipping subscribe to {}", topic_filter);
+            return Ok(());
+        }
+    };
+    subs.write()
         .map_err(|e| anyhow::anyhow!("lock error: {}", e))?
         .entry(topic_filter.to_string())
         .or_insert_with(Vec::new)

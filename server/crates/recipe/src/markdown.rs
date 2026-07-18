@@ -35,6 +35,7 @@ pub fn generate_menu_frontmatter(fm: &MenuFrontmatter) -> String {
 }
 
 /// Serialize ingredients to YAML for menu frontmatter.
+#[allow(dead_code)]
 pub fn ingredients_to_yaml(ingredients: &[ScaledIngredient]) -> String {
     serde_yaml::to_string(ingredients).unwrap_or_default()
 }

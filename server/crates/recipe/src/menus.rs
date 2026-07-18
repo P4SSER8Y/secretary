@@ -13,8 +13,8 @@ use rocket::{Build, Rocket};
 use crate::ingredient;
 use crate::markdown;
 use crate::models::{
-    ApiResponse, CreateMenuRequest, MenuFrontmatter, MenuRecipe, MenuState, MenuSummary,
-    RecipeMeta, SetCurrentRequest, ToggleRequest, UpdateMenuRequest,
+    ApiResponse, CreateMenuRequest, CustomDish, MenuFrontmatter, MenuRecipe, MenuState,
+    MenuSummary, RecipeMeta, SetCurrentRequest, ToggleRequest, UpdateMenuRequest,
 };
 use crate::RECIPE_INDEX;
 
@@ -52,6 +52,7 @@ fn build_menu_state(filename: &str, fm: &MenuFrontmatter) -> MenuState {
         menu_recipes: fm.menu_recipes.clone(),
         ingredients: fm.ingredients.clone(),
         recipes,
+        custom_dishes: fm.custom_dishes.clone(),
     }
 }
 
@@ -92,6 +93,9 @@ pub async fn build(
             adjust_portion,
             update_menu,
             delete_menu,
+            add_custom_dish,
+            remove_custom_dish,
+            adjust_custom_portion,
         ],
     ))
 }
@@ -145,6 +149,7 @@ async fn current_menu() -> Json<ApiResponse<MenuState>> {
         menu_recipes: vec![],
         ingredients: vec![],
         recipes: vec![],
+        custom_dishes: vec![],
     }))
 }
 
@@ -182,6 +187,7 @@ async fn create_menu(req: Json<CreateMenuRequest>) -> Json<ApiResponse<MenuState
         diners: req.diners,
         menu_recipes: vec![],
         ingredients: vec![],
+        custom_dishes: vec![],
     };
 
     save_menu_file(&filename, &fm);
@@ -197,6 +203,7 @@ async fn create_menu(req: Json<CreateMenuRequest>) -> Json<ApiResponse<MenuState
         menu_recipes: vec![],
         ingredients: vec![],
         recipes: vec![],
+        custom_dishes: vec![],
     }))
 }
 
@@ -229,7 +236,7 @@ async fn list_menus() -> Json<ApiResponse<Vec<MenuSummary>>> {
                 name: fm.name,
                 date: fm.date,
                 diners: fm.diners,
-                dish_count: fm.menu_recipes.len(),
+                dish_count: fm.menu_recipes.len() + fm.custom_dishes.len(),
             });
         }
     }
@@ -379,4 +386,91 @@ async fn delete_menu(filename: &str) -> Json<ApiResponse<String>> {
         return Json(ApiResponse::err(format!("Failed to delete: {}", e)));
     }
     Json(ApiResponse::ok(format!("Deleted {}", filename)))
+}
+
+// ── Custom dish helpers ──
+
+fn read_menu_frontmatter(filename: &str) -> Result<MenuFrontmatter, String> {
+    let filepath = saved_dir().join(filename);
+    let raw =
+        std::fs::read_to_string(&filepath).map_err(|_| "Menu not found".to_string())?;
+    let parts: Vec<&str> = raw.splitn(3, "---").collect();
+    if parts.len() < 3 || !parts[0].trim().is_empty() {
+        return Err("Invalid menu format".to_string());
+    }
+    serde_yaml::from_str::<MenuFrontmatter>(parts[1])
+        .map_err(|e| format!("Parse error: {}", e))
+}
+
+// ── POST /menus/<filename>/custom ──
+
+#[derive(Debug, serde::Deserialize)]
+struct CustomDishRequest {
+    name: String,
+}
+
+#[post("/menus/<filename>/custom", data = "<req>")]
+async fn add_custom_dish(
+    filename: &str,
+    req: Json<CustomDishRequest>,
+) -> Json<ApiResponse<MenuState>> {
+    let mut fm = match read_menu_frontmatter(filename) {
+        Ok(f) => f,
+        Err(e) => return Json(ApiResponse::err(e)),
+    };
+
+    fm.custom_dishes.push(CustomDish {
+        name: req.name.clone(),
+        portions: 1.0,
+    });
+    save_menu_file(filename, &fm);
+    Json(ApiResponse::ok(build_menu_state(filename, &fm)))
+}
+
+// ── DELETE /menus/<filename>/custom/<index> ──
+
+#[delete("/menus/<filename>/custom/<index>")]
+async fn remove_custom_dish(
+    filename: &str,
+    index: usize,
+) -> Json<ApiResponse<MenuState>> {
+    let mut fm = match read_menu_frontmatter(filename) {
+        Ok(f) => f,
+        Err(e) => return Json(ApiResponse::err(e)),
+    };
+
+    if index >= fm.custom_dishes.len() {
+        return Json(ApiResponse::err("Custom dish index out of range"));
+    }
+    fm.custom_dishes.remove(index);
+    save_menu_file(filename, &fm);
+    Json(ApiResponse::ok(build_menu_state(filename, &fm)))
+}
+
+// ── POST /menus/<filename>/custom/<index>/portion ──
+
+#[derive(Debug, serde::Deserialize)]
+struct CustomPortionRequest {
+    portions: f64,
+}
+
+#[post("/menus/<filename>/custom/<index>/portion", data = "<req>")]
+async fn adjust_custom_portion(
+    filename: &str,
+    index: usize,
+    req: Json<CustomPortionRequest>,
+) -> Json<ApiResponse<MenuState>> {
+    let mut fm = match read_menu_frontmatter(filename) {
+        Ok(f) => f,
+        Err(e) => return Json(ApiResponse::err(e)),
+    };
+
+    if index >= fm.custom_dishes.len() {
+        return Json(ApiResponse::err("Custom dish index out of range"));
+    }
+
+    let clamped = (req.portions * 2.0).round() / 2.0;
+    fm.custom_dishes[index].portions = clamped.max(0.5);
+    save_menu_file(filename, &fm);
+    Json(ApiResponse::ok(build_menu_state(filename, &fm)))
 }

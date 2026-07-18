@@ -59,6 +59,7 @@
 | `unit` | string | 否 | 单位，如 `"g"`、`"ml"`、`"tbsp"`、`"slice"`、`"个"` |
 | `hint` | string | 否 | 定性描述，如 `"适量"`、`"少许"`。与 `amount` 互斥 |
 | `optional` | bool | 否 | 是否为可选食材，默认 `false`。可选食材在汇总列表中排在最后 |
+| `sub_ingredients` | array | 否 | 嵌套子食材列表。用于组合调料（如"浓盐葱姜水"包含盐、葱、姜、水），归类为一组显示 |
 
 ### 定量食材 vs 定性食材
 
@@ -81,7 +82,30 @@ ingredients:
   - name: "料酒"
     hint: "少许"
     optional: true
+
+  # 组合食材 — 子食材归类为一组显示，各自独立参与换算
+  - name: "浓盐葱姜水"
+    sub_ingredients:
+      - name: "盐"
+        amount: 1.0
+        unit: "勺"
+      - name: "葱"
+        hint: "适量"
+      - name: "姜"
+        hint: "适量"
+      - name: "水"
+        amount: 100.0
+        unit: "ml"
 ```
+
+### 组合食材（sub_ingredients）
+
+当某些食材是组合调料（如"浓盐葱姜水"、"五香粉"等预制混合物），可使用 `sub_ingredients` 字段将子食材归类为一组：
+
+- 父级 `name` 作为分组标签显示，可附带 `hint` 说明
+- 子食材各自独立参与份量换算和汇总合并
+- 同名组合食材在汇总时，同名同单位的子食材自动合并
+- UI 中以折叠分组形式展示，不与其他食材混排
 
 ## 食材换算说明
 

@@ -162,6 +162,46 @@ export const useRecipeStore = defineStore('recipe', () => {
         } catch { /* ignore */ }
     }
 
+    // ── Custom dishes ──
+
+    async function addCustomDish(api: AxiosInstance, name: string) {
+        if (!menu.value?.filename || !name.trim()) return
+        try {
+            const res = await api.post<ApiResponse<MenuState>>(
+                `menus/${menu.value.filename}/custom`,
+                { name: name.trim() }
+            )
+            if (res.data.ok && res.data.data) {
+                menu.value = res.data.data
+            }
+        } catch { /* ignore */ }
+    }
+
+    async function removeCustomDish(api: AxiosInstance, index: number) {
+        if (!menu.value?.filename) return
+        try {
+            const res = await api.delete<ApiResponse<MenuState>>(
+                `menus/${menu.value.filename}/custom/${index}`
+            )
+            if (res.data.ok && res.data.data) {
+                menu.value = res.data.data
+            }
+        } catch { /* ignore */ }
+    }
+
+    async function adjustCustomPortion(api: AxiosInstance, index: number, portions: number) {
+        if (!menu.value?.filename) return
+        try {
+            const res = await api.post<ApiResponse<MenuState>>(
+                `menus/${menu.value.filename}/custom/${index}/portion`,
+                { portions }
+            )
+            if (res.data.ok && res.data.data) {
+                menu.value = res.data.data
+            }
+        } catch { /* ignore */ }
+    }
+
     async function updateDiners(api: AxiosInstance, diners: number) {
         if (!menu.value?.filename) return
         try {
@@ -196,6 +236,9 @@ export const useRecipeStore = defineStore('recipe', () => {
         switchToMenu,
         toggleRecipe,
         adjustPortion,
+        addCustomDish,
+        removeCustomDish,
+        adjustCustomPortion,
         updateDiners,
         getCoverUrl,
         mealName,

@@ -4,6 +4,8 @@ export interface Ingredient {
     unit?: string
     hint?: string
     optional: boolean
+    /** Nested sub-ingredients for compound items (e.g. "浓盐葱姜水" → [盐, 葱, 姜, 水]) */
+    sub_ingredients?: Ingredient[]
 }
 
 export interface ScaledIngredient {
@@ -13,6 +15,7 @@ export interface ScaledIngredient {
     hint?: string
     optional: boolean
     used_in: string[]
+    sub_ingredients?: ScaledIngredient[]
 }
 
 export interface RecipeMeta {
@@ -55,6 +58,11 @@ export interface MenuRecipe {
     portions: number
 }
 
+export interface CustomDish {
+    name: string
+    portions: number
+}
+
 export interface MenuState {
     filename: string
     name: string
@@ -63,6 +71,7 @@ export interface MenuState {
     menu_recipes: MenuRecipe[]
     ingredients: ScaledIngredient[]
     recipes: RecipeMeta[]
+    custom_dishes: CustomDish[]
 }
 
 export interface ApiResponse<T> {

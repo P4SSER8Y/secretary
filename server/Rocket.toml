@@ -21,6 +21,7 @@ tsdb = true
 meme = true
 album = true
 recipe = true
+mqtt = true
 
 [default.recipe.couchdb]
 url = ""

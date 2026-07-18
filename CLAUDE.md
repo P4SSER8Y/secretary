@@ -77,3 +77,6 @@ GitHub Actions cross-compiles for `aarch64-unknown-linux-musl` and `x86_64-unkno
 - `sled` for embedded key-value persistence (inbox metadata, launch timestamps)
 - S3 (S3-compatible object store) for meme media storage
 - Version string generated at build time via `build.rs` using NATO phonetic alphabet suffixes
+- **Recipe ingredients** support nesting via `sub_ingredients` field — compound items (e.g. "浓盐葱姜水" → [盐, 葱, 姜, 水]) display as grouped cards in UI, with sub-ingredients scaled and aggregated independently
+- **Recipe menus** support `custom_dishes` — freeform dishes added directly to the order without a backing recipe file. Stored in menu frontmatter YAML, displayed with portion controls in summary and cooking views
+- **MQTT** is gated by `switches.mqtt` in config; when disabled, `mqtt::subscribe()` is a silent no-op (publish functions already were). Debug.toml sets it off by default

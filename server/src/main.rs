@@ -112,34 +112,36 @@ async fn go(config: &Figment) -> Result<(), rocket::Error> {
         error!("last launch not found");
     }
 
-    if let Ok(host) = config.find_value("mqtt.host") {
-        if let Some(host) = host.as_str() {
-            if !host.is_empty() {
-                let port = config
-                    .find_value("mqtt.port")
-                    .ok()
-                    .and_then(|x| x.to_i128())
-                    .unwrap_or(1883) as u16;
-                let username = config
-                    .find_value("mqtt.username")
-                    .ok()
-                    .and_then(|x| x.into_string());
-                let password = config
-                    .find_value("mqtt.password")
-                    .ok()
-                    .and_then(|x| x.into_string());
-                let client_id = config
-                    .find_value("mqtt.client_id")
-                    .ok()
-                    .and_then(|x| x.into_string())
-                    .unwrap_or_else(|| "secretary".to_string());
-                mqtt::init(mqtt::MqttConfig {
-                    host: host.to_string(),
-                    port,
-                    username,
-                    password,
-                    client_id,
-                });
+    if is_enabled(&config, "mqtt", false) {
+        if let Ok(host) = config.find_value("mqtt.host") {
+            if let Some(host) = host.as_str() {
+                if !host.is_empty() {
+                    let port = config
+                        .find_value("mqtt.port")
+                        .ok()
+                        .and_then(|x| x.to_i128())
+                        .unwrap_or(1883) as u16;
+                    let username = config
+                        .find_value("mqtt.username")
+                        .ok()
+                        .and_then(|x| x.into_string());
+                    let password = config
+                        .find_value("mqtt.password")
+                        .ok()
+                        .and_then(|x| x.into_string());
+                    let client_id = config
+                        .find_value("mqtt.client_id")
+                        .ok()
+                        .and_then(|x| x.into_string())
+                        .unwrap_or_else(|| "secretary".to_string());
+                    mqtt::init(mqtt::MqttConfig {
+                        host: host.to_string(),
+                        port,
+                        username,
+                        password,
+                        client_id,
+                    });
+                }
             }
         }
     }

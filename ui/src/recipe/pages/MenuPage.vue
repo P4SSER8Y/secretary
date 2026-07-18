@@ -26,6 +26,30 @@ const selectedDishes = computed(() => {
         .filter(Boolean) as (RecipeSummary & { portions: number; menuId: string })[]
 })
 
+// Custom (freeform) dishes
+const newCustomName = ref('')
+const addingCustom = ref(false)
+
+async function addCustom() {
+    const name = newCustomName.value.trim()
+    if (!name) return
+    addingCustom.value = true
+    await store.addCustomDish(api, name)
+    newCustomName.value = ''
+    addingCustom.value = false
+}
+
+function removeCustom(index: number) {
+    store.removeCustomDish(api, index)
+}
+
+function adjustCustom(index: number, delta: number) {
+    const cd = store.menu?.custom_dishes[index]
+    if (!cd) return
+    const newPortion = Math.max(0.5, Math.round((cd.portions + delta) * 2) / 2)
+    store.adjustCustomPortion(api, index, newPortion)
+}
+
 // ── New menu dialog ──
 const showNewDialog = ref(false)
 const newDate = ref('')
@@ -38,14 +62,19 @@ const showRecipeDetail = ref(false)
 const detailRecipe = ref<RecipeMeta | null>(null)
 const detailPortions = ref(0)
 
+function scaleIngredient(ing: import('../lib/structs').Ingredient, ratio: number): import('../lib/structs').Ingredient {
+    return {
+        ...ing,
+        amount: ing.amount != null ? Math.round(ing.amount * ratio * 100) / 100 : undefined,
+        sub_ingredients: ing.sub_ingredients?.map(sub => scaleIngredient(sub, ratio)),
+    }
+}
+
 const detailScaledIngredients = computed(() => {
     if (!detailRecipe.value) return []
     const ratio = detailPortions.value / detailRecipe.value.servings
     if (ratio === 1) return detailRecipe.value.ingredients
-    return detailRecipe.value.ingredients.map(ing => ({
-        ...ing,
-        amount: ing.amount != null ? Math.round(ing.amount * ratio * 100) / 100 : undefined,
-    }))
+    return detailRecipe.value.ingredients.map(ing => scaleIngredient(ing, ratio))
 })
 
 function detailAdjust(delta: number) {
@@ -221,7 +250,7 @@ async function addWithPortions() {
     showRecipeDetail.value = false
 }
 
-const selectedCount = computed(() => store.menu?.menu_recipes.length || 0)
+const selectedCount = computed(() => (store.menu?.menu_recipes.length || 0) + (store.menu?.custom_dishes.length || 0))
 
 // ── Saved menus ──
 async function loadMenus() {
@@ -424,7 +453,7 @@ function goCooking() {
                 </div>
 
                 <!-- Selected dishes -->
-                <div v-if="selectedDishes.length === 0" class="text-center text-base-content/40 py-8">
+                <div v-if="selectedDishes.length === 0 && (store.menu?.custom_dishes.length || 0) === 0" class="text-center text-base-content/40 py-8">
                     还没有选菜
                 </div>
                 <div class="space-y-2 mb-6">
@@ -451,6 +480,45 @@ function goCooking() {
                         </div>
                         <button class="btn btn-sm btn-ghost btn-error" @click.stop="onToggle(d.id)">✕</button>
                     </div>
+                </div>
+
+                <!-- Custom (freeform) dishes -->
+                <div class="mb-4">
+                    <h3 class="text-sm font-semibold text-base-content/50 mb-2">自由添加</h3>
+                    <div class="space-y-2">
+                        <div v-for="(cd, i) in store.menu?.custom_dishes || []" :key="'c'+i"
+                            class="flex items-center gap-2 p-2 rounded bg-base-200 border border-dashed border-base-300"
+                        >
+                            <div class="w-7 h-7 rounded bg-accent/20 flex items-center justify-center text-xs font-bold text-accent">
+                                +{{ i+1 }}
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <div class="text-sm font-semibold">{{ cd.name }}</div>
+                            </div>
+                            <div class="flex items-center gap-0.5">
+                                <button class="btn btn-xs btn-ghost w-5 h-5" @click.stop="adjustCustom(i, -0.5)">−</button>
+                                <span class="text-xs w-6 text-center">{{ cd.portions }}</span>
+                                <button class="btn btn-xs btn-ghost w-5 h-5" @click.stop="adjustCustom(i, 0.5)">+</button>
+                            </div>
+                            <button class="btn btn-xs btn-ghost btn-error" @click.stop="removeCustom(i)">✕</button>
+                        </div>
+                    </div>
+                    <form class="flex gap-1 mt-2" @submit.prevent="addCustom">
+                        <input
+                            v-model="newCustomName"
+                            type="text"
+                            placeholder="输入菜名，如：随便炒个菜"
+                            class="input input-sm input-bordered flex-1"
+                            :disabled="addingCustom"
+                        />
+                        <button
+                            class="btn btn-sm btn-outline btn-accent"
+                            :disabled="!newCustomName.trim() || addingCustom"
+                            @click="addCustom"
+                        >
+                            {{ addingCustom ? '...' : '添加' }}
+                        </button>
+                    </form>
                 </div>
 
                 <div class="divider"></div>
@@ -546,11 +614,33 @@ function goCooking() {
                     </button>
                     <h2 class="text-base font-semibold mb-2">食材</h2>
                     <div class="text-base space-y-1 mb-4">
-                        <div v-for="ing in detailScaledIngredients" :key="ing.name"
-                            class="flex justify-between py-1 border-b border-base-200">
-                            <span>{{ ing.name }}</span>
-                            <span class="text-base-content/60">{{ ing.amount ? `${ing.amount}${ing.unit || ''}` : ing.hint || '' }}</span>
-                        </div>
+                        <template v-for="ing in detailScaledIngredients" :key="ing.name">
+                            <!-- Compound ingredient group -->
+                            <div v-if="ing.sub_ingredients && ing.sub_ingredients.length > 0"
+                                class="rounded bg-base-200 overflow-hidden"
+                            >
+                                <div class="flex items-center gap-2 px-3 py-1.5 bg-base-300/50">
+                                    <span class="text-sm font-bold">📦 {{ ing.name }}</span>
+                                    <span v-if="ing.hint" class="text-xs text-base-content/50">{{ ing.hint }}</span>
+                                </div>
+                                <div class="px-2 py-1 space-y-0.5">
+                                    <div v-for="(sub, j) in ing.sub_ingredients" :key="j"
+                                        class="flex justify-between py-0.5 pl-4 border-b border-base-200/50"
+                                    >
+                                        <span class="text-sm">{{ sub.name }}</span>
+                                        <span class="text-sm text-base-content/60">
+                                            {{ sub.amount ? `${sub.amount}${sub.unit || ''}` : sub.hint || '' }}
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- Flat ingredient -->
+                            <div v-else
+                                class="flex justify-between py-1 border-b border-base-200">
+                                <span>{{ ing.name }}</span>
+                                <span class="text-base-content/60">{{ ing.amount ? `${ing.amount}${ing.unit || ''}` : ing.hint || '' }}</span>
+                            </div>
+                        </template>
                     </div>
                     <div class="divider my-2"></div>
                     <div class="prose prose-sm max-w-none" v-html="detailRecipe.body

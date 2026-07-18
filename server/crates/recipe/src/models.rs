@@ -13,6 +13,11 @@ pub struct Ingredient {
     pub hint: Option<String>,
     #[serde(default)]
     pub optional: bool,
+    /// Nested sub-ingredients for compound items (e.g. "浓盐葱姜水" → [盐, 葱, 姜, 水]).
+    /// When present, the parent ingredient acts as a group header and its own
+    /// amount/unit/hint are informational (the sub-ingredients carry the real quantities).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sub_ingredients: Option<Vec<Ingredient>>,
 }
 
 // ── ScaledIngredient (after diners/servings scaling) ──
@@ -30,6 +35,8 @@ pub struct ScaledIngredient {
     pub optional: bool,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub used_in: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sub_ingredients: Option<Vec<ScaledIngredient>>,
 }
 
 // ── Recipe (parsed from markdown) ──
@@ -82,6 +89,17 @@ pub struct MenuRecipe {
 
 fn default_portions() -> f64 { 1.0 }
 
+// ── Custom dish (freeform, not from recipe index) ──
+
+/// A freeform dish added directly to the menu without a backing recipe file.
+/// Displayed in the order list and cooking tabs with adjustable portions.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CustomDish {
+    pub name: String,
+    #[serde(default = "default_portions")]
+    pub portions: f64,
+}
+
 // ── Menu (saved menu file) ──
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -93,6 +111,8 @@ pub struct MenuFrontmatter {
     pub menu_recipes: Vec<MenuRecipe>,
     #[serde(default)]
     pub ingredients: Vec<ScaledIngredient>,
+    #[serde(default)]
+    pub custom_dishes: Vec<CustomDish>,
 }
 
 /// Shared menu state — all users share one recipe list.
@@ -106,6 +126,8 @@ pub struct MenuState {
     pub ingredients: Vec<ScaledIngredient>,
     #[serde(default)]
     pub recipes: Vec<RecipeMeta>,
+    #[serde(default)]
+    pub custom_dishes: Vec<CustomDish>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
