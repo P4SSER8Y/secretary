@@ -2925,12 +2925,11 @@ name = "recipe"
 version = "0.25.3"
 dependencies = [
  "anyhow",
- "base64 0.22.1",
  "chrono",
  "log",
  "rand 0.8.6",
- "reqwest",
  "rocket",
+ "rust-s3",
  "serde",
  "serde_json",
  "serde_yaml",

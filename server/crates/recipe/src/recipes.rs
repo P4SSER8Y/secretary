@@ -70,7 +70,7 @@ async fn get_image(id: &str) -> Option<(ContentType, Vec<u8>)> {
     let data_path = utils::get_data_path();
     let raw_dir = Path::new(data_path).join("recipes").join("raw");
 
-    // CouchDB sync preserves folder structure under raw/,
+    // S3 sync preserves folder structure under raw/,
     // so cover may be "filename.jpg" or "assets/filename.jpg"
     let img_path = if cover.contains('/') {
         raw_dir.join(cover)
@@ -105,11 +105,11 @@ async fn reload_recipes() -> Json<ApiResponse<String>> {
     }
 }
 
-/// POST /recipes/sync — pull recipes from CouchDB and rebuild index
+/// POST /recipes/sync — pull recipes from S3 and rebuild index
 #[post("/recipes/sync")]
 async fn sync_recipes() -> Json<ApiResponse<String>> {
     match sync::manual_sync_and_reload().await {
-        Ok(count) => Json(ApiResponse::ok(format!("Synced {} recipes", count))),
+        Ok(count) => Json(ApiResponse::ok(format!("Synced {} files from S3", count))),
         Err(e) => Json(ApiResponse::err(format!("Sync failed: {}", e))),
     }
 }

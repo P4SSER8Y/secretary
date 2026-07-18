@@ -23,12 +23,12 @@ album = true
 recipe = true
 mqtt = true
 
-[default.recipe.couchdb]
-url = ""
-db = ""
-prefix = ""
-username = ""
-password = ""
+[default.recipe.s3]
+endpoint = ""
+region = ""
+bucket = ""
+access_key = ""
+secret_key = ""
 enabled = false
 
 [default.kindle]

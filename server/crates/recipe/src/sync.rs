@@ -1,20 +1,19 @@
-use std::collections::HashMap;
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use anyhow::Context;
-use base64::Engine;
 use log::{info, warn};
 use serde::Deserialize;
 
-/// CouchDB sync configuration, loaded from Rocket.toml via Figment.
+/// S3 sync configuration, loaded from Rocket.toml via Figment.
 #[derive(Deserialize, Clone)]
-pub struct CouchDbConfig {
-    pub url: String,
-    pub db: String,
-    pub prefix: String,
-    pub username: String,
-    pub password: String,
+pub struct S3Config {
+    pub endpoint: String,
+    pub region: String,
+    pub bucket: String,
+    pub access_key: String,
+    pub secret_key: String,
     #[serde(default)]
     pub enabled: bool,
 }
@@ -26,268 +25,194 @@ pub struct SyncState {
 
 impl SyncState {
     pub fn new() -> Self {
-        // Initialize far in the past so the first access triggers a sync.
         Self {
             last_sync: Instant::now() - std::time::Duration::from_secs(4 * 3600),
         }
     }
 }
 
-// ── Internal deserialization helpers ──
+// ── S3 helpers ──
 
-#[derive(Deserialize)]
-struct CouchDoc {
-    #[serde(rename = "_id")]
-    #[allow(dead_code)]
-    id: String,
-    path: Option<String>,
-    children: Option<Vec<String>>,
-}
+fn build_bucket(config: &S3Config) -> anyhow::Result<Box<s3::Bucket>> {
+    use s3::creds::Credentials;
+    use s3::Region;
 
-#[derive(Deserialize)]
-struct ChunkDoc {
-    #[serde(rename = "_id")]
-    id: String,
-    data: Option<String>,
-}
-
-// ── HTTP helpers ──
-
-fn build_client() -> anyhow::Result<reqwest::Client> {
-    reqwest::Client::builder()
-        .danger_accept_invalid_certs(true)
-        .build()
-        .context("Failed to build HTTP client")
-}
-
-fn auth_url(config: &CouchDbConfig) -> String {
-    let scheme = if config.url.starts_with("https") {
-        "https"
-    } else {
-        "http"
+    let region = Region::Custom {
+        region: config.region.clone(),
+        endpoint: config.endpoint.clone(),
     };
-    let host = config
-        .url
-        .trim_start_matches("https://")
-        .trim_start_matches("http://");
-    format!("{}://{}:{}@{}", scheme, config.username, config.password, host)
+    let credentials = Credentials {
+        access_key: Some(config.access_key.clone()),
+        secret_key: Some(config.secret_key.clone()),
+        security_token: None,
+        session_token: None,
+        expiration: None,
+    };
+    let mut bucket = s3::Bucket::new(&config.bucket, region, credentials)
+        .with_context(|| "Failed to create S3 bucket handle")?
+        .with_path_style();
+    // Garage needs ListObjects v1 when listing without prefix; v2 may return
+    // incomplete results with certain parameter combinations.
+    bucket.set_listobjects_v1();
+    Ok(bucket)
 }
 
 fn recipes_dir() -> PathBuf {
     Path::new(utils::get_data_path()).join("recipes").join("raw")
 }
 
-/// Strip the configured CouchDB prefix from a document path, returning the relative path.
-/// e.g. prefix="300-life/302-食谱/", path="300-life/302-食谱/菜/蚝油生菜.md" → "菜/蚝油生菜.md"
-fn strip_prefix<'a>(prefix: &str, path: &'a str) -> &'a str {
-    path.strip_prefix(prefix).unwrap_or(path)
+// ── ETag cache (sled) ──
+
+fn etag_key(s3_key: &str) -> Vec<u8> {
+    format!("recipe/s3_etag/{}", s3_key).into_bytes()
 }
 
-// ── CouchDB queries ──
-
-async fn fetch_parent_docs(
-    client: &reqwest::Client,
-    config: &CouchDbConfig,
-) -> anyhow::Result<Vec<CouchDoc>> {
-    let base = auth_url(config);
-    let startkey = percent_encode(&config.prefix);
-    let endkey = format!("{}%EF%BF%BF", startkey);
-
-    let url = format!(
-        "{}/{}/_all_docs?startkey=%22{}%22&endkey=%22{}%22&include_docs=true",
-        base, config.db, startkey, endkey
-    );
-
-    let resp = client
-        .get(&url)
-        .send()
-        .await
-        .context("Failed to fetch parent docs")?;
-
-    #[derive(Deserialize)]
-    struct AllDocsResponse {
-        rows: Vec<RowDoc>,
-    }
-    #[derive(Deserialize)]
-    struct RowDoc {
-        doc: Option<CouchDoc>,
-    }
-
-    let body: AllDocsResponse = resp.json().await.context("Failed to parse parent docs")?;
-    let docs: Vec<CouchDoc> = body.rows.into_iter().filter_map(|r| r.doc).collect();
-
-    info!("Fetched {} recipe parent docs from CouchDB", docs.len());
-    Ok(docs)
+fn get_cached_etag(db: &sled::Db, s3_key: &str) -> Option<String> {
+    db.get(etag_key(s3_key)).ok().flatten()
+        .and_then(|v| String::from_utf8(v.to_vec()).ok())
 }
 
-async fn fetch_chunks(
-    client: &reqwest::Client,
-    config: &CouchDbConfig,
-    chunk_ids: &[String],
-) -> anyhow::Result<Vec<ChunkDoc>> {
-    if chunk_ids.is_empty() {
-        return Ok(vec![]);
-    }
-
-    let base = auth_url(config);
-    let url = format!("{}/{}/_all_docs?include_docs=true", base, config.db);
-
-    #[derive(serde::Serialize)]
-    struct KeysReq {
-        keys: Vec<String>,
-    }
-
-    let resp = client
-        .post(&url)
-        .json(&KeysReq {
-            keys: chunk_ids.to_vec(),
-        })
-        .send()
-        .await
-        .context("Failed to fetch chunk docs")?;
-
-    #[derive(Deserialize)]
-    struct AllDocsResponse {
-        rows: Vec<RowDoc>,
-    }
-    #[derive(Deserialize)]
-    struct RowDoc {
-        doc: Option<ChunkDoc>,
-    }
-
-    let body: AllDocsResponse = resp.json().await.context("Failed to parse chunk docs")?;
-    let chunks: Vec<ChunkDoc> = body.rows.into_iter().filter_map(|r| r.doc).collect();
-
-    info!("Fetched {} chunk docs", chunks.len());
-    Ok(chunks)
+fn set_cached_etag(db: &sled::Db, s3_key: &str, etag: &str) {
+    let _ = db.insert(etag_key(s3_key), etag.as_bytes());
 }
 
-// ── Utility ──
+fn remove_cached_etag(db: &sled::Db, s3_key: &str) {
+    let _ = db.remove(etag_key(s3_key));
+}
 
-fn percent_encode(s: &str) -> String {
-    let mut result = String::with_capacity(s.len() * 3);
-    for b in s.as_bytes() {
-        match b {
-            b'0'..=b'9' | b'A'..=b'Z' | b'a'..=b'z' | b'-' | b'_' | b'.' | b'~' | b'/' => {
-                result.push(*b as char);
-            }
-            _ => {
-                result.push_str(&format!("%{:02X}", b));
+/// Delete all sled ETag entries whose keys no longer exist in S3.
+fn purge_stale_etags(db: &sled::Db, known_keys: &HashSet<String>) {
+    let prefix = "recipe/s3_etag/";
+    let mut stale: Vec<String> = Vec::new();
+    for item in db.scan_prefix(prefix) {
+        if let Ok((k, _)) = item {
+            if let Some(s3_key) = std::str::from_utf8(&k)
+                .ok()
+                .and_then(|s| s.strip_prefix(prefix))
+            {
+                if !known_keys.contains(s3_key) {
+                    stale.push(s3_key.to_string());
+                }
             }
         }
     }
-    result
+    for key in &stale {
+        remove_cached_etag(db, key);
+    }
+    if !stale.is_empty() {
+        info!("Purged {} stale ETag entries", stale.len());
+    }
 }
 
 // ── Core sync logic ──
 
-/// Recognised image file extensions.
-fn is_image_ext(ext: &str) -> bool {
-    matches!(ext, "jpg" | "jpeg" | "png" | "webp" | "gif" | "svg")
-}
-
-/// Pull all files from CouchDB and write them into `recipes_dir`,
-/// preserving the exact directory structure and filenames from CouchDB.
-/// Returns the total number of files written.
-async fn sync_from_couchdb(
-    config: &CouchDbConfig,
+/// Pull all files from S3 and write them into `recipes_dir`,
+/// preserving the directory structure and filenames from S3 keys.
+/// Uses sled-stored ETags for incremental sync: only downloads files
+/// whose ETag has changed since last sync.
+async fn sync_from_s3(
+    config: &S3Config,
     recipes_dir: &Path,
 ) -> anyhow::Result<usize> {
-    let cl = build_client()?;
-
-    let parents = fetch_parent_docs(&cl, config).await?;
-    let chunk_ids: Vec<String> = parents
-        .iter()
-        .filter_map(|p| p.children.as_ref())
-        .flatten()
-        .cloned()
-        .collect();
-
-    if chunk_ids.is_empty() {
-        info!("No chunks found under CouchDB prefix");
-        return Ok(0);
-    }
-
-    let chunks = fetch_chunks(&cl, config, &chunk_ids).await?;
-    let chunk_map: HashMap<&str, &ChunkDoc> = chunks.iter().map(|c| (c.id.as_str(), c)).collect();
+    let bucket = build_bucket(config)?;
+    let db = utils::database::get_db();
+    info!("S3 sync: bucket='{}'", config.bucket);
 
     let mut written = 0usize;
-    let mut known_relpaths: Vec<String> = Vec::new();
+    let mut known_keys: HashSet<String> = HashSet::new();
 
-    for parent in &parents {
-        let path = parent.path.as_deref().unwrap_or("");
-        let rel = strip_prefix(&config.prefix, path);
-        if rel.is_empty() || rel == path {
-            continue; // path doesn't start with prefix, skip
+    // Garage returns empty contents when listing with empty prefix and no delimiter.
+    // Workaround: first list with delimiter "/" to discover top-level directory
+    // prefixes, then list each directory individually with a non-empty prefix.
+    let root_list = bucket
+        .list("".to_string(), Some("/".to_string()))
+        .await
+        .context("Failed to list S3 root with delimiter")?;
+
+    let mut dir_prefixes: Vec<String> = Vec::new();
+    for page in root_list {
+        for obj in page.contents {
+            written += sync_one(&bucket, &db, recipes_dir, &obj, &mut known_keys).await?;
         }
-
-        let children_ids = match parent.children.as_ref() {
-            Some(ids) if !ids.is_empty() => ids,
-            _ => continue,
-        };
-        // Concatenate all chunks' data (handles both single and multi-chunk files)
-        let mut combined_data = String::new();
-        for child_id in children_ids {
-            if let Some(chunk) = chunk_map.get(child_id.as_str()) {
-                if let Some(d) = &chunk.data {
-                    combined_data.push_str(d);
-                }
+        if let Some(cp) = page.common_prefixes {
+            for p in cp {
+                dir_prefixes.push(p.prefix.clone());
             }
         }
-        if combined_data.is_empty() {
-            continue;
-        }
-        let data = &combined_data;
-
-        let file_path = recipes_dir.join(rel);
-
-        // Ensure parent directories exist
-        if let Some(parent_dir) = file_path.parent() {
-            std::fs::create_dir_all(parent_dir)
-                .with_context(|| format!("Failed to create dir: {:?}", parent_dir))?;
-        }
-
-        // Determine if this is a binary (image) or text file by extension
-        let ext = Path::new(rel)
-            .extension()
-            .and_then(|e| e.to_str())
-            .unwrap_or("");
-        if is_image_ext(ext) {
-            // Strip whitespace that may have been introduced during chunk concatenation
-            let clean: String = data.chars().filter(|c| !c.is_whitespace()).collect();
-            match base64::engine::general_purpose::STANDARD.decode(&clean) {
-                Ok(decoded) => {
-                    std::fs::write(&file_path, &decoded)
-                        .with_context(|| format!("Failed to write image: {:?}", file_path))?;
-                    info!("Synced image: {}", rel);
-                }
-                Err(e) => {
-                    warn!("Base64 decode failed for {} ({} bytes, starts: {:?}): {} — saving raw",
-                        rel, data.len(), &data[..data.len().min(20)], e);
-                    std::fs::write(&file_path, data)
-                        .with_context(|| format!("Failed to write raw: {:?}", file_path))?;
-                }
-            }
-        } else {
-            std::fs::write(&file_path, data)
-                .with_context(|| format!("Failed to write file: {:?}", file_path))?;
-            info!("Synced file: {}", rel);
-        }
-
-        known_relpaths.push(rel.to_string());
-        written += 1;
     }
 
-    // ── Clean up local files no longer present in CouchDB ──
-    let known_set: std::collections::HashSet<&str> = known_relpaths.iter().map(|s| s.as_str()).collect();
+    for dir_prefix in &dir_prefixes {
+        info!("S3 sync: listing '{}'", dir_prefix);
+        let dir_list = bucket
+            .list(dir_prefix.clone(), None)
+            .await
+            .with_context(|| format!("Failed to list S3 dir '{}'", dir_prefix))?;
+
+        for page in dir_list {
+            for obj in page.contents {
+                written += sync_one(&bucket, &db, recipes_dir, &obj, &mut known_keys).await?;
+            }
+        }
+    }
+
+    // Clean up local files no longer present in S3
+    info!("S3 sync done: {} files downloaded, cleaning stale", written);
+    let known_set: HashSet<&str> = known_keys.iter().map(|s| s.as_str()).collect();
     clean_stale_files(recipes_dir, recipes_dir, &known_set);
+    purge_stale_etags(&db, &known_keys);
 
     Ok(written)
 }
 
+/// Sync a single S3 object: check ETag, skip if unchanged, otherwise download.
+/// Returns 1 if downloaded, 0 if skipped.
+async fn sync_one(
+    bucket: &s3::Bucket,
+    db: &sled::Db,
+    recipes_dir: &Path,
+    obj: &s3::serde_types::Object,
+    known_keys: &mut HashSet<String>,
+) -> anyhow::Result<usize> {
+    let key = &obj.key;
+    known_keys.insert(key.clone());
+
+    // Check ETag — skip download if unchanged AND local file exists
+    if let Some(ref remote_etag) = obj.e_tag {
+        if let Some(cached_etag) = get_cached_etag(db, key) {
+            if cached_etag == *remote_etag && recipes_dir.join(key).exists() {
+                info!("Skipped (unchanged): {}", key);
+                return Ok(0);
+            }
+        }
+    }
+
+    // Download and write
+    let data = bucket
+        .get_object(key)
+        .await
+        .with_context(|| format!("Failed to get S3 object: {}", key))?;
+
+    let file_path = recipes_dir.join(key);
+    if let Some(parent_dir) = file_path.parent() {
+        std::fs::create_dir_all(parent_dir)
+            .with_context(|| format!("Failed to create dir: {:?}", parent_dir))?;
+    }
+
+    std::fs::write(&file_path, data.as_slice())
+        .with_context(|| format!("Failed to write file: {:?}", file_path))?;
+    info!("Synced: {}", key);
+
+    // Cache the new ETag
+    if let Some(ref etag) = obj.e_tag {
+        set_cached_etag(db, key, etag);
+    }
+
+    Ok(1)
+}
+
 /// Recursively remove files under `base_dir` whose relative path (from `base_dir`)
 /// is not in `known_set`.
-fn clean_stale_files(base_dir: &Path, current: &Path, known: &std::collections::HashSet<&str>) {
+fn clean_stale_files(base_dir: &Path, current: &Path, known: &HashSet<&str>) {
     let entries = match std::fs::read_dir(current) {
         Ok(e) => e,
         Err(_) => return,
@@ -296,7 +221,6 @@ fn clean_stale_files(base_dir: &Path, current: &Path, known: &std::collections::
         let path = entry.path();
         if path.is_dir() {
             clean_stale_files(base_dir, &path, known);
-            // Remove empty directory
             if std::fs::read_dir(&path).map_or(false, |mut d| d.next().is_none()) {
                 if let Err(e) = std::fs::remove_dir(&path) {
                     warn!("Failed to remove empty dir {:?}: {}", path, e);
@@ -329,9 +253,9 @@ fn rebuild_index(recipes_dir: &Path) -> anyhow::Result<()> {
 // ── Public API ──
 
 /// Called at the beginning of recipe GET endpoints.
-/// Triggers a background sync if more than 3 hours have passed since the last sync.
+/// Triggers a background S3 sync if more than 3 hours have passed since the last sync.
 pub async fn maybe_auto_sync() {
-    let config = match crate::COUCHDB_CONFIG.get().and_then(|c| c.as_ref()) {
+    let config = match crate::S3_CONFIG.get().and_then(|c| c.as_ref()) {
         Some(c) if c.enabled => c,
         _ => return,
     };
@@ -354,9 +278,9 @@ pub async fn maybe_auto_sync() {
     let dir = recipes_dir();
 
     tokio::spawn(async move {
-        match sync_from_couchdb(&config, &dir).await {
+        match sync_from_s3(&config, &dir).await {
             Ok(n) => {
-                info!("Auto-sync completed: {} recipes", n);
+                info!("Auto-sync completed: {} files from S3", n);
                 if let Err(e) = rebuild_index(&dir) {
                     warn!("Failed to rebuild index after auto-sync: {}", e);
                 }
@@ -371,22 +295,21 @@ pub async fn maybe_auto_sync() {
     });
 }
 
-/// Manual sync + index rebuild. Returns the number of recipes synced.
+/// Manual sync + index rebuild. Returns the number of files synced.
 pub async fn manual_sync_and_reload() -> anyhow::Result<usize> {
-    let config = crate::COUCHDB_CONFIG
+    let config = crate::S3_CONFIG
         .get()
         .and_then(|c| c.as_ref())
-        .context("CouchDB config not present")?;
+        .context("S3 config not present")?;
 
     if !config.enabled {
-        anyhow::bail!("CouchDB sync is not enabled");
+        anyhow::bail!("S3 sync is not enabled");
     }
 
     let dir = recipes_dir();
-    let count = sync_from_couchdb(config, &dir).await?;
+    let count = sync_from_s3(config, &dir).await?;
     rebuild_index(&dir)?;
 
-    // Update last sync timestamp
     if let Some(state) = crate::SYNC_STATE.get() {
         if let Ok(mut s) = state.write() {
             s.last_sync = Instant::now();

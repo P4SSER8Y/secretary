@@ -22,8 +22,8 @@ use crate::models::RecipeMeta;
 pub static RECIPE_INDEX: std::sync::OnceLock<RwLock<HashMap<String, RecipeMeta>>> =
     std::sync::OnceLock::new();
 
-/// CouchDB sync config — initialized at startup if `[recipe.couchdb]` is configured.
-pub static COUCHDB_CONFIG: std::sync::OnceLock<Option<sync::CouchDbConfig>> =
+/// S3 sync config — initialized at startup if `[recipe.s3]` is configured.
+pub static S3_CONFIG: std::sync::OnceLock<Option<sync::S3Config>> =
     std::sync::OnceLock::new();
 
 /// Tracks the last sync timestamp for auto-refresh throttling.
@@ -47,17 +47,16 @@ pub async fn build(
     let index = indexer::scan_recipes(&raw_dir).unwrap_or_default();
     RECIPE_INDEX.get_or_init(|| RwLock::new(index));
 
-    // Read optional CouchDB sync config
-    let couchdb_config: Option<sync::CouchDbConfig> = config
-        .extract_inner("recipe.couchdb")
+    // Read optional S3 sync config
+    let s3_config: Option<sync::S3Config> = config
+        .extract_inner("recipe.s3")
         .unwrap_or(None);
-    if couchdb_config.as_ref().map_or(false, |c| c.enabled) {
+    if s3_config.as_ref().map_or(false, |c| c.enabled) {
         SYNC_STATE.get_or_init(|| RwLock::new(sync::SyncState::new()));
-        log::info!("CouchDB sync enabled: {} recipes prefix '{}'",
-            couchdb_config.as_ref().unwrap().db,
-            couchdb_config.as_ref().unwrap().prefix);
+        log::info!("S3 sync enabled: bucket '{}'",
+            s3_config.as_ref().unwrap().bucket);
     }
-    COUCHDB_CONFIG.get_or_init(|| couchdb_config);
+    S3_CONFIG.get_or_init(|| s3_config);
 
     // Mount routes
     let build = recipes::build(base, build, config).await?;
