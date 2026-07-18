@@ -100,11 +100,11 @@ function todayStr(): string {
 
 function defaultMeal(): string {
     const h = new Date().getHours()
-    if (h >= 6 && h < 10) return '早餐'
-    if (h >= 10 && h < 14) return '午餐'
-    if (h >= 14 && h < 18) return '下午茶'
-    if (h >= 18 && h < 22) return '晚餐'
-    return '夜宵'
+    if (h >= 6 && h < 10) return '午餐'
+    if (h >= 10 && h < 14) return '下午茶'
+    if (h >= 14 && h < 18) return '晚餐'
+    if (h >= 18 && h < 22) return '夜宵'
+    return '早餐'
 }
 
 function dateDisplay(dateStr: string): string {
@@ -445,7 +445,7 @@ function goCooking() {
         <div v-if="showSummary" class="fixed inset-0 z-50 bg-base-100 overflow-y-auto">
             <div class="max-w-lg mx-auto p-4 pb-24">
                 <div class="flex items-center justify-between mb-4">
-                    <h2 class="text-lg font-bold">{{ selectedCount }}道菜</h2>
+                    <h2 class="text-lg font-bold">{{ selectedCount }} 道菜</h2>
                     <button class="btn btn-sm btn-ghost" @click="showSummary = false">✕</button>
                 </div>
 
@@ -481,7 +481,6 @@ function goCooking() {
 
                 <!-- Custom (freeform) dishes -->
                 <div class="mb-4">
-                    <h3 class="text-sm font-semibold text-base-content/50 mb-2">自由添加</h3>
                     <div class="space-y-2">
                         <div v-for="(cd, i) in store.menu?.custom_dishes || []" :key="'c'+i"
                             class="flex items-center gap-2 p-2 rounded bg-base-200 border border-dashed border-base-300"
@@ -504,7 +503,7 @@ function goCooking() {
                         <input
                             v-model="newCustomName"
                             type="text"
-                            placeholder="输入菜名，如：随便炒个菜"
+                            placeholder="搞个新意思？"
                             class="input input-sm input-bordered flex-1"
                             :disabled="addingCustom"
                         />
