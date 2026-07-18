@@ -381,9 +381,6 @@ function goCooking() {
                     <!-- Info -->
                     <div class="flex-1 min-w-0">
                         <div class="text-sm font-semibold truncate">{{ r.name }}</div>
-                        <div class="text-xs text-base-content/50">
-                            ⏱ {{ r.cook_time }} · 👥 {{ r.servings }}人份
-                        </div>
                     </div>
                     <!-- Toggle button -->
                     <button

@@ -46,9 +46,7 @@ const coverUrl = store.getCoverUrl(props.recipe.id, props.recipe.cover_image)
         <!-- Title — click to see detail -->
         <div class="card-body p-2 cursor-pointer" @click="emit('detail', recipe.id)">
             <h3 class="text-base font-semibold truncate">{{ recipe.name }}</h3>
-            <p class="text-base text-base-content/50">
-                {{ recipe.cook_time }} · {{ recipe.servings }}人份
-            </p>
+            <!-- cook_time and servings hidden from selection view -->
         </div>
     </div>
 </template>
