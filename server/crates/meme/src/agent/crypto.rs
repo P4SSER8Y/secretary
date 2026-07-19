@@ -48,3 +48,32 @@ pub fn decrypt(data: &[u8], key: &[u8; 32]) -> Result<Vec<u8>> {
 pub fn is_encrypted(data: &[u8]) -> bool {
     data.len() >= MAGIC.len() && &data[..MAGIC.len()] == MAGIC
 }
+
+// --- Path hash: domain-separated from derive_key so folder names don't leak AES key info ---
+
+const PATH_DOMAIN: &str = "meme-path-v2";
+
+/// Compute the S3 subfolder name for encrypted files.
+/// Uses a separate domain from derive_key so the folder name reveals nothing about the AES key.
+pub fn compute_path_hash(password: &str, owner: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.input_str(PATH_DOMAIN);
+    hasher.input_str(password);
+    hasher.input_str(owner);
+    let mut hash = [0u8; 32];
+    hasher.result(&mut hash);
+    hash[..16].iter().map(|b| format!("{:02x}", b)).collect()
+}
+
+/// Sentinel subfolder for unencrypted files.
+pub const PLAIN_FOLDER: &str = "_plain";
+
+/// Determine the S3 meta subfolder from encryption state and password.
+pub fn compute_subfolder(encrypted: bool, password: Option<&str>, owner: &str) -> String {
+    if encrypted {
+        let pwd = password.expect("password required for encrypted files");
+        compute_path_hash(pwd, owner)
+    } else {
+        PLAIN_FOLDER.to_string()
+    }
+}

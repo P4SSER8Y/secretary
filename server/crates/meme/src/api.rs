@@ -361,6 +361,11 @@ async fn upload(
     let tags = agent::split_tags(data.tags);
     let extension = data.filename.split_once('.').unwrap_or(("", "")).1;
     let encrypted = password.0.is_some();
+    let subfolder = crate::agent::crypto::compute_subfolder(
+        encrypted,
+        password.0.as_deref(),
+        &token.name,
+    );
     let meta = MetaData {
         timestamp: chrono::Utc::now().to_rfc3339(),
         content_type: data.mime.to_string(),
@@ -373,11 +378,12 @@ async fn upload(
         tags: tags.iter().map(|v| v.to_string()).collect(),
         lower_tags: tags.iter().map(|v| v.to_ascii_lowercase()).collect(),
         encrypted,
+        path_key: Some(subfolder.clone()),
     };
 
     let raw_key = format!("raw/{}/{}", meta.owner, meta.filename);
     let thumbnail_key = format!("thumbnail/{}/{}", meta.owner, meta.thumbnail);
-    let meta_key = format!("meta/{}/{}.yml", meta.owner, meta.uuid);
+    let meta_key = format!("meta/{}/{}/{}.yml", meta.owner, subfolder, meta.uuid);
     let meta_raw = serde_yaml::to_string(&meta).unwrap();
     {
         let (raw_to_upload, thumb_to_upload, meta_to_upload) =

@@ -35,6 +35,12 @@ pub struct MetaData {
     pub lower_tags: Vec<String>,
     #[serde(default)]
     pub encrypted: bool,
+    /// S3 subfolder for this meta file. Not serialized — the S3 key is the source of truth.
+    /// - `None` → legacy flat path `meta/{owner}/uuid.yml`
+    /// - `Some("_plain")` → `meta/{owner}/_plain/uuid.yml`
+    /// - `Some("<hex>")` → `meta/{owner}/{hex}/uuid.yml`
+    #[serde(skip)]
+    pub path_key: Option<String>,
 }
 
 impl PartialEq for MetaData {
@@ -50,6 +56,29 @@ impl std::hash::Hash for MetaData {
 }
 
 impl Eq for MetaData {}
+
+/// Compute the S3 key for a meta YAML file based on its `path_key`.
+/// Falls back to legacy flat path when `path_key` is `None`.
+pub fn meta_s3_path(meta: &MetaData) -> String {
+    match &meta.path_key {
+        Some(hash) => format!("meta/{}/{}/{}.yml", meta.owner, hash, meta.uuid),
+        None => format!("meta/{}/{}.yml", meta.owner, meta.uuid),
+    }
+}
+
+/// Parse the S3 subfolder from a meta key.
+/// - `meta/alice/abc123/uuid.yml` → `Some("abc123")`
+/// - `meta/alice/uuid.yml` → `None`
+fn parse_path_key_from_s3_key(key: &str, owner: &str) -> Option<String> {
+    let prefix = format!("meta/{}/", owner);
+    let rest = key.strip_prefix(&prefix)?;
+    let parts: Vec<&str> = rest.split('/').collect();
+    match parts.len() {
+        1 => None,                          // uuid.yml → legacy flat
+        2 => Some(parts[0].to_string()),    // hash/uuid.yml → hash
+        _ => None,
+    }
+}
 
 #[derive(Serialize, Debug)]
 #[serde(crate = "rocket::serde")]
@@ -204,11 +233,7 @@ pub async fn format_into_avif(src: Arc<MetaData>, key: Option<&[u8; 32]>) -> Res
         } else {
             meta_bytes
         };
-        let _ = upload(
-            &format!("meta/{}/{}.yml", meta.owner, meta.uuid),
-            &to_upload,
-        )
-        .await?;
+        let _ = upload(&meta_s3_path(&meta), &to_upload).await?;
 
         let buffer = META_BUFFERS
             .get()
@@ -349,11 +374,7 @@ pub async fn update_tags(
         .with_context(|| anyhow!("S3_SEMAPHORE not set"))?
         .acquire()
         .await;
-    upload(
-        &format!("meta/{}/{}.yml", owner, uuid),
-        &to_upload,
-    )
-    .await?;
+    upload(&meta_s3_path(&updated), &to_upload).await?;
 
     let mut buffer = buffer.write().await;
     if let Some(owner_map) = buffer.get_mut(owner) {
@@ -386,13 +407,20 @@ pub async fn get_content_decrypted(
     }
 }
 
-async fn full_update(name: &str, key: Option<&[u8; 32]>) -> Result<()> {
+async fn full_update(name: &str, password: Option<&str>) -> Result<()> {
+    let key: Option<[u8; 32]> = password.map(|p| super::crypto::derive_key(p, name));
+    let target_subfolder: Option<String> = password.map(|p| super::crypto::compute_path_hash(p, name))
+        .or_else(|| Some(super::crypto::PLAIN_FOLDER.to_string()))
+        .filter(|_| password.is_some() || true); // always Some for the subfolder scan
+
+    /// Process a single meta object from S3. Returns Ok(Some(meta)) if successfully
+    /// parsed, Ok(None) if skipped (wrong key, etc.), or Err on hard failure.
     async fn update_one(
         bucket: &Box<Bucket>,
         s3_key: String,
         name: &str,
         aes_key: Option<&[u8; 32]>,
-    ) -> Result<usize> {
+    ) -> Result<Option<MetaData>> {
         let _permit = S3_SEMAPHORE
             .get()
             .with_context(|| anyhow!("S3_SEMAPHORE not set"))?
@@ -401,39 +429,86 @@ async fn full_update(name: &str, key: Option<&[u8; 32]>) -> Result<()> {
         let raw = bucket.get_object(s3_key.clone()).await?;
         let raw_bytes = raw.as_slice();
 
+        // Determine path_key from the S3 key
+        let pk = parse_path_key_from_s3_key(&s3_key, name);
+
         if super::crypto::is_encrypted(raw_bytes) {
             let k = aes_key.ok_or_else(|| anyhow!("skipped encrypted {}", s3_key))?;
-            let decrypted = super::crypto::decrypt(raw_bytes, k)
-                .map_err(|_| anyhow!("decrypt failed"))?;
-            let meta = serde_yaml::from_slice::<MetaData>(&decrypted)
+            let decrypted = match super::crypto::decrypt(raw_bytes, k) {
+                Ok(d) => d,
+                Err(_) => {
+                    // Failed to decrypt — if it's in a subfolder, move back to flat
+                    if pk.is_some() {
+                        let fallback = format!("meta/{}/{}", name,
+                            s3_key.rsplit('/').next().unwrap_or("unknown.yml"));
+                        warn!("decrypt failed for {}, moving back to {}", s3_key, fallback);
+                        let _ = bucket.put_object(fallback, raw_bytes).await;
+                        let _ = bucket.delete_object(s3_key).await;
+                    }
+                    return Err(anyhow!("decrypt failed"));
+                }
+            };
+            let mut meta = serde_yaml::from_slice::<MetaData>(&decrypted)
                 .map_err(|_| anyhow!("parse failed"))?;
-            let mut meta = meta;
             meta.owner = name.to_string();
             meta.lower_tags = meta
                 .tags
                 .iter()
                 .map(|t| t.trim().to_ascii_lowercase())
                 .collect();
-            let result = insert(Arc::new(meta)).await?;
-            Ok(result)
+            meta.path_key = pk;
+            insert(Arc::new(meta.clone())).await?;
+            Ok(Some(meta))
         } else if aes_key.is_some() {
+            // Plaintext data but we have a key — skip
             Err(anyhow!("skipped plaintext {}", s3_key))
         } else {
-            let meta = serde_yaml::from_slice::<MetaData>(raw_bytes).map_err(|e| {
+            let mut meta = serde_yaml::from_slice::<MetaData>(raw_bytes).map_err(|e| {
                 log::warn!("parse {} failed: {}", s3_key, e);
                 anyhow!("parse failed")
             })?;
-            let mut meta = meta;
             meta.owner = name.to_string();
             meta.lower_tags = meta
                 .tags
                 .iter()
                 .map(|t| t.trim().to_ascii_lowercase())
                 .collect();
-            let result = insert(Arc::new(meta)).await?;
-            Ok(result)
+            meta.path_key = pk;
+            insert(Arc::new(meta.clone())).await?;
+            Ok(Some(meta))
         }
     }
+
+    /// Migrate a meta file from flat path to the target subfolder.
+    async fn migrate_meta(
+        bucket: &Box<Bucket>,
+        meta: &MetaData,
+        target_subfolder: &str,
+        aes_key: Option<&[u8; 32]>,
+    ) -> Result<()> {
+        let new_path = format!("meta/{}/{}/{}.yml", meta.owner, target_subfolder, meta.uuid);
+        let old_path = format!("meta/{}/{}.yml", meta.owner, meta.uuid);
+        if new_path == old_path {
+            return Ok(());
+        }
+        let _permit = S3_SEMAPHORE
+            .get()
+            .with_context(|| anyhow!("S3_SEMAPHORE not set"))?
+            .acquire()
+            .await;
+
+        let meta_yaml = serde_yaml::to_string(meta)?;
+        let to_upload = if let Some(k) = aes_key {
+            super::crypto::encrypt(meta_yaml.as_bytes(), k)?
+        } else {
+            meta_yaml.into_bytes()
+        };
+        bucket.put_object(&new_path, &to_upload).await?;
+        bucket.delete_object(&old_path).await?;
+        info!("migrated meta {} -> {}", old_path, new_path);
+        Ok(())
+    }
+
     #[cfg(feature = "avif")]
     async fn format_all(name: String, key: Option<[u8; 32]>) -> Result<()> {
         let buffer = META_BUFFERS
@@ -447,30 +522,93 @@ async fn full_update(name: &str, key: Option<&[u8; 32]>) -> Result<()> {
         }
         Ok(())
     }
+
     info!("update buffer for {}", name);
     let bucket = BUCKET.get().with_context(|| anyhow!("BUCKET not set"))?;
-    let list = bucket.list(format!("meta/{}", name), None).await?;
+
+    // Clear existing buffer for this owner
     {
         let buffer = META_BUFFERS
             .get()
             .with_context(|| anyhow!("META_BUFFERS not set"))?;
         buffer.write().await.remove(name);
     }
-    let mut results = Vec::new();
-    for list in list {
-        for object in list.contents {
-            results.push(update_one(bucket, object.key, name, key));
+
+    let mut any_success = false;
+    let ts = target_subfolder.as_deref().unwrap_or(super::crypto::PLAIN_FOLDER);
+
+    // Phase 1: scan target subfolder (e.g. meta/{name}/{hash}/ or meta/{name}/_plain/)
+    {
+        let prefix = format!("meta/{}/{}/", name, ts);
+        let list = bucket.list(prefix, None).await?;
+        let mut results = Vec::new();
+        for page in list {
+            for object in page.contents {
+                results.push(update_one(bucket, object.key, name, key.as_ref()));
+            }
+        }
+        for r in join_all(results).await {
+            match r {
+                Ok(Some(_)) => any_success = true,
+                _ => {}
+            }
         }
     }
-    let todo_result = join_all(results).await;
-    if todo_result
-        .into_iter()
-        .any(|item| item.is_ok() && item.unwrap() > 0)
+
+    // Phase 2: scan flat legacy dir (meta/{name}/*.yml, not inside subfolders)
     {
+        let prefix = format!("meta/{}/", name);
+        let list = bucket.list(prefix, Some("/".to_string())).await?;
+        let mut results = Vec::new();
+        for page in list {
+            for object in page.contents {
+                results.push(update_one(bucket, object.key, name, key.as_ref()));
+            }
+        }
+        // Collect metas that need migration (flat files successfully parsed)
+        let mut metas_to_migrate: Vec<MetaData> = Vec::new();
+        for r in join_all(results).await {
+            match r {
+                Ok(Some(meta)) if meta.path_key.is_none() => {
+                    any_success = true;
+                    metas_to_migrate.push(meta);
+                }
+                Ok(Some(_)) => any_success = true,
+                _ => {}
+            }
+        }
+        // Run migrations concurrently (metas_to_migrate is stable now)
+        let migrations: Vec<_> = metas_to_migrate
+            .iter()
+            .map(|m| migrate_meta(bucket, m, ts, key.as_ref()))
+            .collect();
+        for r in join_all(migrations).await {
+            if let Err(e) = r {
+                warn!("migration failed: {}", e);
+            }
+        }
+
+        // Update path_key in buffer for successfully migrated items
+        {
+            let buffer = META_BUFFERS
+                .get()
+                .with_context(|| anyhow!("META_BUFFERS not set"))?;
+            let mut buffer = buffer.write().await;
+            if let Some(map) = buffer.get_mut(name) {
+                for (_, v) in map.iter_mut() {
+                    if v.path_key.is_none() && v.encrypted == key.is_some() {
+                        Arc::make_mut(v).path_key = Some(ts.to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    if any_success {
         info!("finish update buffer for {}", name);
         #[cfg(feature = "avif")]
         if let Some(k) = key {
-            tokio::spawn(format_all(name.to_string(), Some(*k)));
+            tokio::spawn(format_all(name.to_string(), Some(k)));
         }
         Ok(())
     } else {
@@ -480,7 +618,6 @@ async fn full_update(name: &str, key: Option<&[u8; 32]>) -> Result<()> {
 
 pub async fn force_update(name: &str, password: Option<&str>) -> Result<()> {
     static LOCK: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
-    let key: Option<[u8; 32]> = password.map(|p| super::crypto::derive_key(p, name));
     let mut updating = false;
     {
         let set = LOCK.get_or_init(|| Mutex::new(HashSet::new())).lock().await;
@@ -505,7 +642,7 @@ pub async fn force_update(name: &str, password: Option<&str>) -> Result<()> {
         let mut set = LOCK.get_or_init(|| Mutex::new(HashSet::new())).lock().await;
         set.insert(name.to_string());
     }
-    let t = full_update(name, key.as_ref()).await;
+    let t = full_update(name, password).await;
     if t.is_err() {
         log::error!("update {} failed: {:?}", name, t);
     }
@@ -648,7 +785,7 @@ pub async fn remove_meta(meta: Arc<MetaData>) -> anyhow::Result<()> {
         map.remove(&meta.uuid);
     }
     let keys = vec![
-        format!("meta/{}/{}.yml", meta.owner, meta.uuid),
+        meta_s3_path(&meta),
         format!("raw/{}/{}", meta.owner, meta.filename),
         format!("thumbnail/{}/{}", meta.owner, meta.thumbnail),
     ];
@@ -679,7 +816,7 @@ pub async fn reencrypt(
 
     for item in &list {
         let uuid = item.uuid.clone();
-        match reencrypt_one(item, &old_key, new_key.as_ref()).await {
+        match reencrypt_one(item, &old_key, new_key.as_ref(), new_password).await {
             Ok(()) => processed += 1,
             Err(e) => errors.push(ReencryptError {
                 uuid,
@@ -707,14 +844,26 @@ async fn reencrypt_one(
     item: &MetaData,
     old_key: &Option<[u8; 32]>,
     new_key: Option<&[u8; 32]>,
+    new_password: Option<&str>,
 ) -> Result<()> {
     let was_encrypted = item.encrypted;
-    let meta_key = format!("meta/{}/{}.yml", item.owner, item.uuid);
+    let old_meta_key = meta_s3_path(item);
     let raw_key = format!("raw/{}/{}", item.owner, item.filename);
     let thumb_key = format!("thumbnail/{}/{}", item.owner, item.thumbnail);
 
+    // Determine new meta path
+    let new_subfolder = if new_key.is_some() {
+        super::crypto::compute_path_hash(
+            new_password.ok_or_else(|| anyhow!("new password required for encrypted"))?,
+            &item.owner,
+        )
+    } else {
+        super::crypto::PLAIN_FOLDER.to_string()
+    };
+    let new_meta_key = format!("meta/{}/{}/{}.yml", item.owner, new_subfolder, item.uuid);
+
     // Fetch and update meta
-    let meta_bytes = get_content(&meta_key).await?;
+    let meta_bytes = get_content(&old_meta_key).await?;
     let mut meta: MetaData = if super::crypto::is_encrypted(&meta_bytes) {
         let k = old_key
             .as_ref()
@@ -761,14 +910,22 @@ async fn reencrypt_one(
     };
     upload(&thumb_key, &thumb_to_upload).await?;
 
-    // Upload updated meta
+    // Update meta's path_key and upload to new path
+    meta.path_key = Some(new_subfolder);
+
+    // Upload updated meta to NEW path
     let meta_yaml = serde_yaml::to_string(&meta)?;
     let meta_to_upload = if let Some(nk) = new_key {
         super::crypto::encrypt(meta_yaml.as_bytes(), nk)?
     } else {
         meta_yaml.into_bytes()
     };
-    upload(&meta_key, &meta_to_upload).await?;
+    upload(&new_meta_key, &meta_to_upload).await?;
+
+    // Delete old meta if path changed
+    if old_meta_key != new_meta_key {
+        remove(&old_meta_key).await?;
+    }
 
     // Update in-memory buffer
     let buffer = META_BUFFERS
