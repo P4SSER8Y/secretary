@@ -33,7 +33,7 @@ pub fn aggregate(
 ) -> Vec<ScaledIngredient> {
     let portion_map: HashMap<&str, f64> = menu_recipes
         .iter()
-        .map(|m| (m.id.as_str(), m.portions))
+        .map(|m| (m.name.as_str(), m.portions))
         .collect();
 
     // Flat (non-compound) ingredients: keyed by (name, unit)
@@ -47,7 +47,7 @@ pub fn aggregate(
         HashMap::new();
 
     for recipe in recipes {
-        let portions = portion_map.get(recipe.id.as_str()).copied().unwrap_or(1.0);
+        let portions = portion_map.get(recipe.name.as_str()).copied().unwrap_or(1.0);
 
         for ing in &recipe.ingredients {
             if let Some(ref subs) = ing.sub_ingredients {

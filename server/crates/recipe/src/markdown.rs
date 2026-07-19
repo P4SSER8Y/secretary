@@ -21,7 +21,16 @@ pub fn parse_recipe(raw: &str) -> anyhow::Result<RecipeMeta> {
 
     let body = parts.get(2).map(|s| s.trim().to_string()).unwrap_or_default();
 
-    let mut meta: RecipeMeta = serde_yaml::from_str(frontmatter_str)
+    // Backward compat: if frontmatter has 'id:' but not 'name:', rename.
+    let fm = if !frontmatter_str.contains("name:") && frontmatter_str.contains("\nid:") {
+        frontmatter_str.replace("\nid:", "\nname:")
+    } else if frontmatter_str.starts_with("id:") && !frontmatter_str.contains("name:") {
+        frontmatter_str.replacen("id:", "name:", 1)
+    } else {
+        frontmatter_str.to_string()
+    };
+
+    let mut meta: RecipeMeta = serde_yaml::from_str(&fm)
         .context("Failed to parse recipe frontmatter")?;
     meta.body = body;
 

@@ -29,20 +29,20 @@ export default defineConfig(({ mode }) => {
         server: {
             host: true,
             proxy: {
-                '^/album/api': {
+                '/album/api': {
                     target: env.VITE_PROXY_ALBUM_API,
                     changeOrigin: true,
                 },
-                '^/inbox/api': {
+                '/inbox/api': {
                     target: env.VITE_PROXY_INBOX_API,
                     changeOrigin: true,
                 },
-                '^/meme/i': {
+                '/meme/i': {
                     target: env.VITE_PROXY_MEME_API,
                     secure: false,
                     changeOrigin: true,
                 },
-                '^/recipe/api': {
+                '/recipe/api': {
                     target: env.VITE_PROXY_RECIPE_API || 'http://127.0.0.1:8000',
                     changeOrigin: true,
                 },

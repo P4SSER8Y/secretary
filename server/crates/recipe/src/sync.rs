@@ -252,6 +252,28 @@ fn rebuild_index(recipes_dir: &Path) -> anyhow::Result<()> {
 
 // ── Public API ──
 
+/// Upload a single object to S3. Used by the recipe edit endpoints
+/// to push changes before syncing back to keep the local cache consistent.
+pub async fn push_to_s3(key: &str, data: &[u8]) -> anyhow::Result<()> {
+    let config = crate::S3_CONFIG
+        .get()
+        .and_then(|c| c.as_ref())
+        .context("S3 config not present")?;
+
+    if !config.enabled {
+        anyhow::bail!("S3 sync is not enabled");
+    }
+
+    let bucket = build_bucket(config)?;
+    bucket
+        .put_object(key, data)
+        .await
+        .with_context(|| format!("Failed to push to S3: {}", key))?;
+
+    info!("Pushed to S3: {} ({} bytes)", key, data.len());
+    Ok(())
+}
+
 /// Called at the beginning of recipe GET endpoints.
 /// Triggers a background S3 sync if more than 3 hours have passed since the last sync.
 pub async fn maybe_auto_sync() {

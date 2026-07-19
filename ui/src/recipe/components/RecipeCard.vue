@@ -9,12 +9,12 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-    toggle: [id: string]
-    detail: [id: string]
+    toggle: [name: string]
+    detail: [name: string]
 }>()
 
 const store = useRecipeStore()
-const coverUrl = store.getCoverUrl(props.recipe.id, props.recipe.cover_image)
+const coverUrl = store.getCoverUrl(props.recipe.name, props.recipe.cover_image)
 </script>
 
 <template>
@@ -23,7 +23,7 @@ const coverUrl = store.getCoverUrl(props.recipe.id, props.recipe.cover_image)
         :class="{ 'ring-2 ring-primary': selected, 'ring-1 ring-accent/50': othersSelected && !selected }"
     >
         <!-- Cover image — click to see detail -->
-        <figure class="aspect-[5/3] bg-base-300 relative cursor-pointer" @click="emit('detail', recipe.id)">
+        <figure class="aspect-[5/3] bg-base-300 relative cursor-pointer" @click="emit('detail', recipe.name)">
             <img
                 v-if="coverUrl"
                 :src="coverUrl"
@@ -38,13 +38,13 @@ const coverUrl = store.getCoverUrl(props.recipe.id, props.recipe.cover_image)
             <button
                 class="absolute top-1 right-1 w-7 h-7 rounded-full flex items-center justify-center text-base font-bold transition-colors shadow"
                 :class="selected ? 'bg-primary text-primary-content' : 'bg-base-100/80 text-base-content/40 hover:bg-base-100'"
-                @click.stop="emit('toggle', recipe.id)"
+                @click.stop="emit('toggle', recipe.name)"
             >
                 {{ selected ? '✓' : '+' }}
             </button>
         </figure>
         <!-- Title — click to see detail -->
-        <div class="card-body p-2 cursor-pointer" @click="emit('detail', recipe.id)">
+        <div class="card-body p-2 cursor-pointer" @click="emit('detail', recipe.name)">
             <h3 class="text-base font-semibold truncate">{{ recipe.name }}</h3>
             <!-- cook_time and servings hidden from selection view -->
         </div>

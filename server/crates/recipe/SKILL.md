@@ -4,8 +4,9 @@
 
 ## 文件命名
 
-- 文件名即菜谱 ID，使用小写字母 + 连字符：`hongshao-rou.md`、`tangcu-paigu.md`
+- 文件名即菜谱名称（唯一标识符）：`红烧肉.md`、`糖醋排骨.md`
 - 文件名必须唯一，不可重复
+- 支持中文字符，可直接使用菜名作为文件名
 - 仅扫描 `.md` 扩展名的文件
 - `data/recipes/saved/` 子目录用于存放已保存的菜单，不会被扫描为菜谱
 
@@ -15,8 +16,8 @@
 
 1. **在 frontmatter 中显式指定** `cover_image`（推荐）— 路径相对于该 md 文件所在目录
 2. **自动探测**（frontmatter 未指定时）：
-   - `<id>.jpg` / `.png` / `.webp` / `.jpeg` — 与菜谱文件同名
-   - `<id>/cover.jpg` / `.png` / `.webp` / `.jpeg` — 放在以菜谱 ID 命名的子目录中
+   - 与菜谱文件同名的图片（如 `红烧肉.jpg`）— `.jpg` / `.png` / `.webp` / `.jpeg`
+   - `<菜名>/cover.jpg` — 放在以菜名命名的子目录中
 
 示例：
 - `cover_image: "hongshao-rou.jpg"` — 同目录下的图片
@@ -31,8 +32,7 @@
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| `id` | string | 唯一标识符，与文件名一致 |
-| `name` | string | 菜名，如"红烧肉" |
+| `name` | string | 唯一标识符（即菜名），如"红烧肉"。文件名应与之一致。 |
 | `category` | string | 分类，用于 UI 分类 tab 筛选。建议用英文：`meat`、`vegetable`、`seafood`、`soup`、`staple`、`snack`、`cold-dish` 等 |
 | `prep_time` | string | 准备时间，如 `"15m"` |
 | `cook_time` | string | 烹饪时间，如 `"45m"` |
@@ -147,7 +147,6 @@ ingredients:
 
 ```markdown
 ---
-id: "hongshao-rou"
 name: "红烧肉"
 category: "meat"
 prep_time: "15m"
@@ -201,18 +200,40 @@ ingredients:
 5. **收汁**（5m）：开盖转大火收汁，至汤汁浓稠包裹肉块即可出锅。
 ```
 
-## 添加菜谱后
+## 在线编辑
 
-菜谱文件放入 `data/recipes/` 后，有两种方式使其生效：
+Web 端和 API 均支持菜谱的创建和修改。
 
-1. **重启服务** — 服务启动时自动扫描
-2. **热重载** — `POST /recipe/api/recipes/reload`，无需重启
+### Web 编辑
+
+- **修改已有菜谱**：点击菜谱卡片 → 详情弹窗底部「✏️ 编辑此菜谱」→ Markdown 编辑器
+- **新建菜谱**：导航栏 🍽️ → 左侧抽屉「📝 新建菜谱」→ 输入菜名 → 编辑器
+- **封面图**：详情弹窗或编辑器工具栏「🖼️ 封面」按钮 → 上传/更换封面图
+- 编辑器基于 md-editor-v3，左侧编辑 / 右侧预览
+
+### API 接口
+
+| Method | Path | 说明 |
+|---|---|---|
+| `GET` | `/recipes/<name>/raw` | 获取原始 markdown 文本 |
+| `PUT` | `/recipes/<name>/raw` | 保存菜谱（推 S3 → 同步回本地 → 重建索引） |
+| `POST` | `/recipes/<name>/image` | 上传封面图（支持 jpg/png/webp） |
+
+保存流程：解析验证 frontmatter → 推送文件到 S3 → 从 S3 同步回本地 + 重建索引。S3 不可用时保存失败（保护数据一致性）。
+
+AI agent 可用 `PUT /recipes/<name>/raw` 直接上传菜谱，body 为完整 markdown，`Content-Type: text/plain`。
+
+### 手动同步
+
+- **热重载**（仅本地扫描）：`POST /api/recipes/reload`
+- **S3 同步**：`POST /api/recipes/sync` 或左侧抽屉「🔄 同步」按钮
 
 ## 注意事项
 
-- `id` 必须全局唯一，建议与文件名一致
+- `name` 必须全局唯一，建议与文件名一致
 - `servings` 是整数，代表基准份数
 - 食材同名同单位才会在汇总时合并（如"生抽:tbsp"和"生抽:ml"视为不同）
 - 定性食材（无 `amount`）不做换算也不合并
 - `adjustable: false` 的菜谱在点菜界面不显示 +/- 按钮，但仍在食材清单中按默认份量计算
 - 菜单保存在 `data/recipes/saved/` 目录，不会被索引为菜谱
+- 保存菜谱时 frontmatter 会被解析验证，格式错误会返回失败提示

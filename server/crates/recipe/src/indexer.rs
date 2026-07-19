@@ -45,10 +45,10 @@ fn scan_recipes_recursive(root: &Path, current: &Path, index: &mut HashMap<Strin
         match markdown::parse_recipe(&raw) {
             Ok(mut meta) => {
                 if meta.cover_image.is_none() {
-                    meta.cover_image = find_cover_image_recursive(root, &meta.id);
+                    meta.cover_image = find_cover_image_recursive(root, &meta.name);
                 }
-                info!("Loaded recipe: {} ({})", meta.name, meta.id);
-                index.insert(meta.id.clone(), meta);
+                info!("Loaded recipe: {}", meta.name);
+                index.insert(meta.name.clone(), meta);
             }
             Err(e) => {
                 warn!("Failed to parse recipe {:?}: {}", path, e);
@@ -58,22 +58,22 @@ fn scan_recipes_recursive(root: &Path, current: &Path, index: &mut HashMap<Strin
 }
 
 /// Look for a cover image for a recipe anywhere under root.
-fn find_cover_image_recursive(root: &Path, id: &str) -> Option<String> {
+fn find_cover_image_recursive(root: &Path, name: &str) -> Option<String> {
     for ext in &["jpg", "png", "webp", "jpeg"] {
         // Check root level
-        let candidate = root.join(format!("{}.{}", id, ext));
+        let candidate = root.join(format!("{}.{}", name, ext));
         if candidate.exists() {
-            return Some(format!("{}.{}", id, ext));
+            return Some(format!("{}.{}", name, ext));
         }
-        // Check {id}/cover.ext
-        let candidate = root.join(id).join(format!("cover.{}", ext));
+        // Check {name}/cover.ext
+        let candidate = root.join(name).join(format!("cover.{}", ext));
         if candidate.exists() {
-            return Some(format!("{}/cover.{}", id, ext));
+            return Some(format!("{}/cover.{}", name, ext));
         }
-        // Check assets/{id}.ext (Obsidian subdirectory pattern)
-        let candidate = root.join("assets").join(format!("{}.{}", id, ext));
+        // Check assets/{name}.ext (Obsidian subdirectory pattern)
+        let candidate = root.join("assets").join(format!("{}.{}", name, ext));
         if candidate.exists() {
-            return Some(format!("assets/{}.{}", id, ext));
+            return Some(format!("assets/{}.{}", name, ext));
         }
     }
     None

@@ -19,7 +19,6 @@ export interface ScaledIngredient {
 }
 
 export interface RecipeMeta {
-    id: string
     name: string
     category: string
     cover_image?: string
@@ -34,7 +33,6 @@ export interface RecipeMeta {
 }
 
 export interface RecipeSummary {
-    id: string
     name: string
     category: string
     cover_image?: string
@@ -54,7 +52,7 @@ export interface MenuSummary {
 }
 
 export interface MenuRecipe {
-    id: string
+    name: string
     portions: number
 }
 

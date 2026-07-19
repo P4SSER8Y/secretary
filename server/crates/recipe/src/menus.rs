@@ -1,5 +1,6 @@
 use std::path::Path;
 
+use anyhow::Context;
 use chrono::Local;
 use rocket::delete;
 use rocket::figment::Figment;
@@ -17,6 +18,17 @@ use crate::models::{
     MenuSummary, RecipeMeta, SetCurrentRequest, ToggleRequest, UpdateMenuRequest,
 };
 use crate::RECIPE_INDEX;
+
+/// Parse menu frontmatter YAML with backward compat for old `id:` fields.
+fn parse_menu_yaml(yaml: &str) -> anyhow::Result<MenuFrontmatter> {
+    // Old menus use 'id:' in menu_recipes entries; silently map to 'name:'.
+    // Replace 'id:' only at the start of YAML keys (preceded by whitespace or '- ').
+    let fixed = yaml
+        .replace("- id:", "- name:")
+        .replace("\n  id:", "\n  name:")
+        .replace("\n    id:", "\n    name:");
+    serde_yaml::from_str(&fixed).context("Failed to parse menu frontmatter")
+}
 
 const SAVED_DIR: &str = "saved";
 
@@ -42,7 +54,7 @@ fn build_menu_state(filename: &str, fm: &MenuFrontmatter) -> MenuState {
     let recipes: Vec<RecipeMeta> = fm
         .menu_recipes
         .iter()
-        .filter_map(|mr| index.get(&mr.id).cloned())
+        .filter_map(|mr| index.get(&mr.name).cloned())
         .collect();
     MenuState {
         filename: filename.to_string(),
@@ -67,7 +79,7 @@ fn recompute_and_save(filename: &str, fm: &mut MenuFrontmatter) {
     let recipes: Vec<&RecipeMeta> = fm
         .menu_recipes
         .iter()
-        .filter_map(|mr| index.get(&mr.id))
+        .filter_map(|mr| index.get(&mr.name))
         .collect();
     fm.ingredients = ingredient::aggregate(&recipes, &fm.menu_recipes);
     save_menu_file(filename, fm);
@@ -112,7 +124,7 @@ async fn current_menu() -> Json<ApiResponse<MenuState>> {
             let raw = std::fs::read_to_string(&filepath).unwrap_or_default();
             let parts: Vec<&str> = raw.splitn(3, "---").collect();
             if parts.len() >= 3 && parts[0].trim().is_empty() {
-                if let Ok(fm) = serde_yaml::from_str::<MenuFrontmatter>(parts[1]) {
+                if let Ok(fm) = parse_menu_yaml(parts[1]) {
                     return Json(ApiResponse::ok(build_menu_state(&filename, &fm)));
                 }
             }
@@ -134,7 +146,7 @@ async fn current_menu() -> Json<ApiResponse<MenuState>> {
             let raw = std::fs::read_to_string(entry.path()).unwrap_or_default();
             let parts: Vec<&str> = raw.splitn(3, "---").collect();
             if parts.len() >= 3 && parts[0].trim().is_empty() {
-                if let Ok(fm) = serde_yaml::from_str::<MenuFrontmatter>(parts[1]) {
+                if let Ok(fm) = parse_menu_yaml(parts[1]) {
                     return Json(ApiResponse::ok(build_menu_state(&filename, &fm)));
                 }
             }
@@ -230,7 +242,7 @@ async fn list_menus() -> Json<ApiResponse<Vec<MenuSummary>>> {
         if parts.len() < 3 || !parts[0].trim().is_empty() {
             continue;
         }
-        if let Ok(fm) = serde_yaml::from_str::<MenuFrontmatter>(parts[1]) {
+        if let Ok(fm) = parse_menu_yaml(parts[1]) {
             menus.push(MenuSummary {
                 filename: entry.file_name().to_string_lossy().to_string(),
                 name: fm.name,
@@ -284,16 +296,16 @@ async fn toggle_recipe(filename: &str, req: Json<ToggleRequest>) -> Json<ApiResp
     };
 
     // Toggle: add with default portions = recipe servings, or remove
-    if let Some(pos) = fm.menu_recipes.iter().position(|mr| mr.id == req.recipe_id) {
+    if let Some(pos) = fm.menu_recipes.iter().position(|mr| mr.name == req.recipe_name) {
         fm.menu_recipes.remove(pos);
     } else {
         let index = RECIPE_INDEX.get().unwrap().read().unwrap();
         let portions = index
-            .get(&req.recipe_id)
+            .get(&req.recipe_name)
             .map(|r| r.servings as f64)
             .unwrap_or(1.0);
         fm.menu_recipes.push(MenuRecipe {
-            id: req.recipe_id.clone(),
+            name: req.recipe_name.clone(),
             portions,
         });
     }
@@ -306,7 +318,8 @@ async fn toggle_recipe(filename: &str, req: Json<ToggleRequest>) -> Json<ApiResp
 
 #[derive(Debug, serde::Deserialize)]
 struct PortionRequest {
-    recipe_id: String,
+    #[serde(alias = "recipe_id")]
+    recipe_name: String,
     portions: f64,
 }
 
@@ -329,7 +342,7 @@ async fn adjust_portion(filename: &str, req: Json<PortionRequest>) -> Json<ApiRe
 
     // Check if recipe is adjustable
     let index = RECIPE_INDEX.get().unwrap().read().unwrap();
-    if let Some(recipe) = index.get(&req.recipe_id) {
+    if let Some(recipe) = index.get(&req.recipe_name) {
         if !recipe.adjustable {
             return Json(ApiResponse::err("This recipe's portion cannot be adjusted"));
         }
@@ -339,7 +352,7 @@ async fn adjust_portion(filename: &str, req: Json<PortionRequest>) -> Json<ApiRe
     let clamped = (req.portions * 2.0).round() / 2.0;
     let clamped = clamped.max(0.5);
 
-    if let Some(mr) = fm.menu_recipes.iter_mut().find(|mr| mr.id == req.recipe_id) {
+    if let Some(mr) = fm.menu_recipes.iter_mut().find(|mr| mr.name == req.recipe_name) {
         mr.portions = clamped;
     }
 
@@ -398,7 +411,7 @@ fn read_menu_frontmatter(filename: &str) -> Result<MenuFrontmatter, String> {
     if parts.len() < 3 || !parts[0].trim().is_empty() {
         return Err("Invalid menu format".to_string());
     }
-    serde_yaml::from_str::<MenuFrontmatter>(parts[1])
+    parse_menu_yaml(parts[1])
         .map_err(|e| format!("Parse error: {}", e))
 }
 

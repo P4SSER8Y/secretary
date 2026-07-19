@@ -81,8 +81,8 @@ export const useRecipeStore = defineStore('recipe', () => {
         }
     }
 
-    async function loadRecipeDetail(api: AxiosInstance, id: string): Promise<RecipeMeta | null> {
-        const res = await api.get<ApiResponse<RecipeMeta>>(`recipes/${id}`)
+    async function loadRecipeDetail(api: AxiosInstance, name: string): Promise<RecipeMeta | null> {
+        const res = await api.get<ApiResponse<RecipeMeta>>(`recipes/${encodeURIComponent(name)}`)
         if (res.data.ok && res.data.data) {
             return res.data.data
         }
@@ -113,29 +113,29 @@ export const useRecipeStore = defineStore('recipe', () => {
     let toggleQueue: string[] = []
     let toggleTimer: ReturnType<typeof setTimeout> | null = null
 
-    async function toggleRecipe(api: AxiosInstance, recipeId: string) {
+    async function toggleRecipe(api: AxiosInstance, recipeName: string) {
         if (!menu.value?.filename) return
         // Optimistic local update
-        const idx = menu.value.menu_recipes.findIndex(mr => mr.id === recipeId)
+        const idx = menu.value.menu_recipes.findIndex(mr => mr.name === recipeName)
         if (idx >= 0) {
             menu.value.menu_recipes.splice(idx, 1)
         } else {
             // Default portions = recipe's own servings (will be corrected by server response)
-            const recipe = recipes.value.find(r => r.id === recipeId)
+            const recipe = recipes.value.find(r => r.name === recipeName)
             const portions = recipe?.servings || 2
-            menu.value.menu_recipes.push({ id: recipeId, portions })
+            menu.value.menu_recipes.push({ name: recipeName, portions })
         }
         // Debounced server sync
-        toggleQueue.push(recipeId)
+        toggleQueue.push(recipeName)
         if (toggleTimer) clearTimeout(toggleTimer)
         toggleTimer = setTimeout(async () => {
-            const ids = [...toggleQueue]
+            const names = [...toggleQueue]
             toggleQueue = []
-            for (const id of ids) {
+            for (const name of names) {
                 try {
                     const res = await api.post<ApiResponse<MenuState>>(
                         `menus/${menu.value!.filename}/toggle`,
-                        { recipe_id: id }
+                        { recipe_name: name }
                     )
                     if (res.data.ok && res.data.data) {
                         menu.value = res.data.data
@@ -145,16 +145,16 @@ export const useRecipeStore = defineStore('recipe', () => {
         }, 200)
     }
 
-    async function adjustPortion(api: AxiosInstance, recipeId: string, delta: number) {
+    async function adjustPortion(api: AxiosInstance, recipeName: string, delta: number) {
         if (!menu.value?.filename) return
-        const mr = menu.value.menu_recipes.find(mr => mr.id === recipeId)
+        const mr = menu.value.menu_recipes.find(mr => mr.name === recipeName)
         if (!mr) return
         const newPortion = Math.max(0.5, Math.round((mr.portions + delta) * 2) / 2)
         mr.portions = newPortion
         try {
             const res = await api.post<ApiResponse<MenuState>>(
                 `menus/${menu.value.filename}/portion`,
-                { recipe_id: recipeId, portions: newPortion }
+                { recipe_name: recipeName, portions: newPortion }
             )
             if (res.data.ok && res.data.data) {
                 menu.value = res.data.data
@@ -215,9 +215,42 @@ export const useRecipeStore = defineStore('recipe', () => {
         } catch { /* ignore */ }
     }
 
-    function getCoverUrl(id: string, cover?: string): string {
-        if (cover) return `api/image/${id}`
+    function getCoverUrl(name: string, cover?: string): string {
+        if (cover) return `api/image/${encodeURIComponent(name)}`
         return ''
+    }
+
+    // ── Recipe editing ──
+
+    async function loadRaw(api: AxiosInstance, name: string): Promise<string | null> {
+        try {
+            const res = await api.get<string>(`recipes/${encodeURIComponent(name)}/raw`, { responseType: 'text' })
+            return typeof res.data === 'string' ? res.data : null
+        } catch { return null }
+    }
+
+    async function saveRaw(api: AxiosInstance, name: string, markdown: string): Promise<RecipeMeta | null> {
+        try {
+            const res = await api.put<ApiResponse<RecipeMeta>>(`recipes/${encodeURIComponent(name)}/raw`, markdown, {
+                headers: { 'Content-Type': 'text/plain' },
+            })
+            if (res.data.ok && res.data.data) {
+                return res.data.data
+            }
+            return null
+        } catch { return null }
+    }
+
+    async function uploadCover(api: AxiosInstance, name: string, file: File): Promise<string | null> {
+        try {
+            const res = await api.post<ApiResponse<string>>(`recipes/${encodeURIComponent(name)}/image`, file, {
+                headers: { 'Content-Type': file.type },
+            })
+            if (res.data.ok && res.data.data) {
+                return res.data.data
+            }
+            return null
+        } catch { return null }
     }
 
     return {
@@ -242,5 +275,8 @@ export const useRecipeStore = defineStore('recipe', () => {
         updateDiners,
         getCoverUrl,
         mealName,
+        loadRaw,
+        saveRaw,
+        uploadCover,
     }
 })

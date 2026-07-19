@@ -4,10 +4,63 @@ import type { AxiosInstance } from 'axios'
 import { useRecipeStore } from '../lib/store'
 import RecipeCard from '../components/RecipeCard.vue'
 import IngredientList from '../components/IngredientList.vue'
+import { MdEditor } from 'md-editor-v3'
+import 'md-editor-v3/lib/style.css'
 import type { ApiResponse, MenuSummary, RecipeMeta, RecipeSummary } from '../lib/structs'
 
 const api = getCurrentInstance()?.appContext.config.globalProperties.$api as AxiosInstance
 const store = useRecipeStore()
+
+// ── Editor state ──
+const showEditor = ref(false)
+const editingName = ref('')
+const editorContent = ref('')
+const saving = ref(false)
+
+// ── Cover image dialog ──
+const showCoverDialog = ref(false)
+const coverTargetName = ref('')
+const coverFile = ref<File | null>(null)
+const coverSaving = ref(false)
+const coverPreviewUrl = computed(() => {
+    if (coverFile.value) return URL.createObjectURL(coverFile.value)
+    return ''
+})
+const currentCoverUrl = computed(() => {
+    const recipe = store.recipes.find(r => r.name === coverTargetName.value)
+    if (recipe?.cover_image) return `api/image/${encodeURIComponent(coverTargetName.value)}`
+    return ''
+})
+
+function openCoverDialog(name: string) {
+    coverTargetName.value = name
+    coverFile.value = null
+    showCoverDialog.value = true
+}
+
+function onCoverFileChange(e: Event) {
+    const input = e.target as HTMLInputElement
+    if (input.files && input.files[0]) {
+        coverFile.value = input.files[0]
+    }
+}
+
+async function saveCover() {
+    if (!coverFile.value) return
+    coverSaving.value = true
+    try {
+        const result = await store.uploadCover(api, coverTargetName.value, coverFile.value)
+        if (result) {
+            showCoverDialog.value = false
+            await store.loadRecipes(api)
+        }
+    } catch { /* ignore */ }
+    coverSaving.value = false
+}
+
+// ── New recipe dialog ──
+const showNewRecipeDialog = ref(false)
+const newRecipeName = ref('')
 
 const activeCategory = ref<string>('')
 const showSummary = ref(false)
@@ -17,13 +70,13 @@ const menus = ref<MenuSummary[]>([])
 // Selected dishes (resolved from menu_recipes)
 const selectedDishes = computed(() => {
     if (!store.menu) return []
-    const recipeMap = new Map(store.recipes.map(r => [r.id, r]))
+    const recipeMap = new Map(store.recipes.map(r => [r.name, r]))
     return store.menu.menu_recipes
         .map(mr => {
-            const r = recipeMap.get(mr.id)
-            return r ? { ...r, portions: mr.portions, menuId: mr.id } : null
+            const r = recipeMap.get(mr.name)
+            return r ? { ...r, portions: mr.portions, menuName: mr.name } : null
         })
-        .filter(Boolean) as (RecipeSummary & { portions: number; menuId: string })[]
+        .filter(Boolean) as (RecipeSummary & { portions: number; menuName: string })[]
 })
 
 // Custom (freeform) dishes
@@ -81,8 +134,8 @@ function detailAdjust(delta: number) {
     const val = Math.max(0.5, Math.round((detailPortions.value + delta) * 2) / 2)
     if (val === detailPortions.value) return
     detailPortions.value = val
-    if (detailRecipe.value && isSelected(detailRecipe.value.id)) {
-        store.adjustPortion(api, detailRecipe.value.id, delta)
+    if (detailRecipe.value && isSelected(detailRecipe.value.name)) {
+        store.adjustPortion(api, detailRecipe.value.name, delta)
     }
 }
 
@@ -211,22 +264,22 @@ async function syncRecipes() {
     finally { syncing.value = false }
 }
 
-function isSelected(id: string): boolean {
-    return store.menu?.menu_recipes.some(mr => mr.id === id) || false
+function isSelected(name: string): boolean {
+    return store.menu?.menu_recipes.some(mr => mr.name === name) || false
 }
 
-function onAdjust(id: string, delta: number) {
-    store.adjustPortion(api, id, delta)
+function onAdjust(name: string, delta: number) {
+    store.adjustPortion(api, name, delta)
 }
 
-function onToggle(id: string) {
-    store.toggleRecipe(api, id)
+function onToggle(name: string) {
+    store.toggleRecipe(api, name)
 }
 
-async function openRecipeDetail(id: string) {
-    detailRecipe.value = await store.loadRecipeDetail(api, id)
+async function openRecipeDetail(name: string) {
+    detailRecipe.value = await store.loadRecipeDetail(api, name)
     if (detailRecipe.value) {
-        const existing = store.menu?.menu_recipes.find(mr => mr.id === id)
+        const existing = store.menu?.menu_recipes.find(mr => mr.name === name)
         detailPortions.value = existing ? existing.portions : detailRecipe.value.servings
         showRecipeDetail.value = true
     }
@@ -234,18 +287,18 @@ async function openRecipeDetail(id: string) {
 
 async function addWithPortions() {
     if (!detailRecipe.value || !store.menu?.filename) return
-    const id = detailRecipe.value.id
-    if (isSelected(id)) {
-        onToggle(id)
+    const name = detailRecipe.value.name
+    if (isSelected(name)) {
+        onToggle(name)
         showRecipeDetail.value = false
         return
     }
     const desired = detailPortions.value
-    onToggle(id)
+    onToggle(name)
     await new Promise(r => setTimeout(r, 300))
-    const mr = store.menu?.menu_recipes.find(mr => mr.id === id)
+    const mr = store.menu?.menu_recipes.find(mr => mr.name === name)
     if (mr && mr.portions !== desired) {
-        store.adjustPortion(api, id, Math.round((desired - mr.portions) * 2) / 2)
+        store.adjustPortion(api, name, Math.round((desired - mr.portions) * 2) / 2)
     }
     showRecipeDetail.value = false
 }
@@ -279,6 +332,80 @@ async function deleteMenu(m: MenuSummary) {
 function goCooking() {
     store.stopPolling()
     store.screen = 'cooking'
+}
+
+// ── Recipe editing ──
+
+async function startEditRecipe(name: string) {
+    showRecipeDetail.value = false
+    editingName.value = name
+    editorContent.value = '加载中...'
+    showEditor.value = true
+
+    const raw = await store.loadRaw(api, name)
+    if (raw === null) {
+        console.error('Failed to load raw recipe:', name)
+        editorContent.value = '加载失败，请检查网络或刷新重试。'
+        return
+    }
+    editorContent.value = raw
+}
+
+async function startNewRecipe() {
+    editingName.value = newRecipeName.value
+    editorContent.value = [
+        '---',
+        `name: "${newRecipeName.value}"`,
+        'category: ""',
+        'prep_time: ""',
+        'cook_time: ""',
+        `servings: 2`,
+        'difficulty: "easy"',
+        'adjustable: true',
+        'ingredients: []',
+        'tags: []',
+        '---',
+        '',
+        '## 准备工作',
+        '',
+        '## 步骤',
+        '',
+        '1. ',
+        '',
+    ].join('\n')
+    showNewRecipeDialog.value = false
+    showEditor.value = true
+}
+
+async function saveEditor() {
+    saving.value = true
+    try {
+        const result = await store.saveRaw(api, editingName.value, editorContent.value)
+        if (result) {
+            showEditor.value = false
+            await store.loadRecipes(api)
+            // Open detail of the saved recipe
+            detailRecipe.value = await store.loadRecipeDetail(api, editingName.value)
+            if (detailRecipe.value) {
+                detailPortions.value = detailRecipe.value.servings
+                showRecipeDetail.value = true
+            }
+        }
+    } catch (e) {
+        console.error('Save failed:', e)
+    }
+    saving.value = false
+}
+
+function openNewRecipeDialog() {
+    newRecipeName.value = ''
+    showNewRecipeDialog.value = true
+}
+
+function confirmNewRecipe() {
+    const name = newRecipeName.value.trim()
+    if (!name) return
+    startNewRecipe()
 }
 </script>
 
@@ -350,27 +477,27 @@ function goCooking() {
             <div v-if="viewMode === 'grid'" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
                 <RecipeCard
                     v-for="r in filteredRecipes"
-                    :key="r.id"
+                    :key="r.name"
                     :recipe="r"
-                    :selected="isSelected(r.id)"
+                    :selected="isSelected(r.name)"
                     :others-selected="false"
-                    @toggle="onToggle(r.id)"
-                    @detail="openRecipeDetail(r.id)"
+                    @toggle="onToggle(r.name)"
+                    @detail="openRecipeDetail(r.name)"
                 />
             </div>
             <!-- List view -->
             <div v-else class="flex flex-col gap-1">
                 <div
                     v-for="r in filteredRecipes"
-                    :key="r.id"
+                    :key="r.name"
                     class="flex items-center gap-2 p-2 rounded bg-base-200 hover:bg-base-300 transition-colors cursor-pointer"
-                    :class="{ 'ring-2 ring-primary': isSelected(r.id) }"
-                    @click="openRecipeDetail(r.id)"
+                    :class="{ 'ring-2 ring-primary': isSelected(r.name) }"
+                    @click="openRecipeDetail(r.name)"
                 >
                     <!-- Cover thumbnail -->
                     <img
                         v-if="r.cover_image"
-                        :src="`api/image/${r.id}`"
+                        :src="`api/image/${encodeURIComponent(r.name)}`"
                         :alt="r.name"
                         class="w-12 h-12 rounded object-cover flex-shrink-0"
                         loading="lazy"
@@ -385,10 +512,10 @@ function goCooking() {
                     <!-- Toggle button -->
                     <button
                         class="btn btn-sm flex-shrink-0"
-                        :class="isSelected(r.id) ? 'btn-error btn-outline' : 'btn-primary'"
-                        @click.stop="onToggle(r.id)"
+                        :class="isSelected(r.name) ? 'btn-error btn-outline' : 'btn-primary'"
+                        @click.stop="onToggle(r.name)"
                     >
-                        {{ isSelected(r.id) ? '移除' : '加入' }}
+                        {{ isSelected(r.name) ? '移除' : '加入' }}
                     </button>
                 </div>
                 <div v-if="filteredRecipes.length === 0" class="text-center text-base-content/40 py-8">
@@ -405,14 +532,19 @@ function goCooking() {
                     <h2 class="text-lg font-bold">已保存菜单</h2>
                     <button class="btn btn-sm btn-ghost" @click="showMenus = false">✕</button>
                 </div>
-                <div class="flex items-center gap-2 mb-3">
-                    <button class="btn btn-sm btn-ghost flex-shrink-0" :disabled="syncing" @click="syncRecipes">
-                        <span v-if="syncing" class="loading loading-spinner loading-xs"></span>
-                        <span v-else>🔄 同步</span>
-                    </button>
-                    <button class="btn btn-sm btn-primary flex-1" @click="openNewMenuDialog">
+                <div class="space-y-2 mb-3">
+                    <button class="btn btn-sm btn-primary w-full" @click="openNewMenuDialog">
                         + 新建菜单
                     </button>
+                    <div class="flex items-center gap-2">
+                        <button class="btn btn-sm btn-ghost flex-1" :disabled="syncing" @click="syncRecipes">
+                            <span v-if="syncing" class="loading loading-spinner loading-xs"></span>
+                            <span v-else>🔄 同步</span>
+                        </button>
+                        <button class="btn btn-sm btn-ghost flex-1" @click="openNewRecipeDialog">
+                            📝 新建菜谱
+                        </button>
+                    </div>
                 </div>
                 <div class="space-y-2">
                     <div
@@ -454,14 +586,14 @@ function goCooking() {
                     还没有选菜
                 </div>
                 <div class="space-y-2 mb-6">
-                    <div v-for="d in selectedDishes" :key="d.id"
+                    <div v-for="d in selectedDishes" :key="d.name"
                         class="flex items-center gap-2 p-2 rounded bg-base-200">
-                        <img v-if="d.cover_image" :src="`api/image/${d.id}`"
+                        <img v-if="d.cover_image" :src="`api/image/${encodeURIComponent(d.name)}`"
                             class="w-10 h-10 rounded object-cover cursor-pointer"
-                            @click="showSummary = false; openRecipeDetail(d.id)" />
+                            @click="showSummary = false; openRecipeDetail(d.name)" />
                         <div v-else class="w-10 h-10 rounded bg-base-300 flex items-center justify-center text-lg cursor-pointer"
-                            @click="showSummary = false; openRecipeDetail(d.id)">🍽️</div>
-                        <div class="flex-1 min-w-0 cursor-pointer" @click="showSummary = false; openRecipeDetail(d.id)">
+                            @click="showSummary = false; openRecipeDetail(d.name)">🍽️</div>
+                        <div class="flex-1 min-w-0 cursor-pointer" @click="showSummary = false; openRecipeDetail(d.name)">
                             <div class="text-sm font-semibold truncate">{{ d.name }}</div>
                             <div class="flex items-center gap-2">
                                 <span class="text-sm text-base-content/50">{{ d.servings }}人份</span>
@@ -471,11 +603,11 @@ function goCooking() {
                         </div>
                         <!-- +/- buttons for adjustable recipes -->
                         <div v-if="d.adjustable" class="flex items-center gap-0.5">
-                            <button class="btn btn-xs btn-ghost w-6 h-6" @click.stop="onAdjust(d.menuId, -0.5)">−</button>
+                            <button class="btn btn-xs btn-ghost w-6 h-6" @click.stop="onAdjust(d.menuName, -0.5)">−</button>
                             <span class="text-xs w-6 text-center">{{ d.portions }}</span>
-                            <button class="btn btn-xs btn-ghost w-6 h-6" @click.stop="onAdjust(d.menuId, 0.5)">+</button>
+                            <button class="btn btn-xs btn-ghost w-6 h-6" @click.stop="onAdjust(d.menuName, 0.5)">+</button>
                         </div>
-                        <button class="btn btn-sm btn-ghost btn-error" @click.stop="onToggle(d.id)">✕</button>
+                        <button class="btn btn-sm btn-ghost btn-error" @click.stop="onToggle(d.name)">✕</button>
                     </div>
                 </div>
 
@@ -577,7 +709,7 @@ function goCooking() {
             <div class="max-w-lg mx-auto">
                 <!-- Cover image -->
                 <div v-if="detailRecipe.cover_image" class="relative">
-                    <img :src="`api/image/${detailRecipe.id}`" :alt="detailRecipe.name"
+                    <img :src="`api/image/${encodeURIComponent(detailRecipe.name)}`" :alt="detailRecipe.name"
                         class="w-full aspect-[5/3] object-cover cursor-pointer" @click="showRecipeDetail = false" />
                     <button class="absolute top-3 right-3 btn btn-sm btn-circle btn-ghost bg-base-100/70"
                         @click="showRecipeDetail = false">✕</button>
@@ -604,9 +736,9 @@ function goCooking() {
                         <span class="text-xs text-base-content/50">(原{{ detailRecipe.servings }}人份)</span>
                     </div>
                     <button class="btn btn-sm w-full mb-4"
-                        :class="isSelected(detailRecipe.id) ? 'btn-error btn-outline' : 'btn-primary'"
+                        :class="isSelected(detailRecipe.name) ? 'btn-error btn-outline' : 'btn-primary'"
                         @click="addWithPortions()">
-                        {{ isSelected(detailRecipe.id) ? '从菜单中移除' : `➕ 加入菜单 (${detailPortions}份)` }}
+                        {{ isSelected(detailRecipe.name) ? '从菜单中移除' : `➕ 加入菜单 (${detailPortions}份)` }}
                     </button>
                     <h2 class="text-base font-semibold mb-2">食材</h2>
                     <div class="text-base space-y-1 mb-4">
@@ -649,6 +781,87 @@ function goCooking() {
                         .replace(/^(\d+)\. (.+)$/gm, '<div class=\'flex gap-2 my-1\'><span class=\'font-bold text-accent\'>$1.</span><span>$2</span></div>')
                         .replace(/\n\n/g, '<br/>')
                     "></div>
+                    <div class="divider my-4"></div>
+                    <div class="flex gap-2">
+                        <button class="btn btn-sm btn-ghost flex-1" @click="startEditRecipe(detailRecipe!.name)">
+                            ✏️ 编辑此菜谱
+                        </button>
+                        <button class="btn btn-sm btn-ghost" @click="openCoverDialog(detailRecipe!.name)">
+                            🖼️ 封面
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Editor overlay -->
+        <div v-if="showEditor" class="fixed inset-0 z-[51] bg-base-100 overflow-y-auto">
+            <div class="max-w-3xl mx-auto p-3">
+                <!-- Top bar -->
+                <div class="flex items-center justify-between mb-3">
+                    <h2 class="text-lg font-bold">编辑菜谱</h2>
+                    <div class="flex items-center gap-2">
+                        <button class="btn btn-sm btn-ghost" @click="openCoverDialog(editingName)">🖼️ 封面</button>
+                        <button class="btn btn-sm btn-primary" :disabled="saving" @click="saveEditor">
+                            <span v-if="saving" class="loading loading-spinner loading-xs"></span>
+                            <span v-else>保存</span>
+                        </button>
+                        <button class="btn btn-sm btn-ghost" @click="showEditor = false">取消</button>
+                    </div>
+                </div>
+                <!-- Editor -->
+                <MdEditor
+                    v-model="editorContent"
+                    :toolbars="['bold', 'italic', 'strikeThrough', 'title', 0, 'quote', 'unorderedList', 'orderedList', 'link', 'image', 0, 'preview', 'fullscreen']"
+                    previewTheme="github"
+                    style="height: calc(100dvh - 100px);"
+                />
+            </div>
+        </div>
+
+        <!-- New recipe dialog -->
+        <div v-if="showNewRecipeDialog" class="fixed inset-0 z-[60] flex items-center justify-center bg-black/50" @click.self="showNewRecipeDialog = false">
+            <div class="bg-base-100 rounded-lg shadow-xl p-6 w-80 max-w-[90vw]">
+                <h3 class="text-lg font-bold mb-3">新建菜谱</h3>
+                <label class="label text-sm">菜名</label>
+                <input
+                    v-model="newRecipeName"
+                    class="input input-bordered w-full mb-3"
+                    placeholder="例如：红烧肉"
+                />
+                <div class="flex justify-end gap-2">
+                    <button class="btn btn-sm btn-ghost" @click="showNewRecipeDialog = false">取消</button>
+                    <button class="btn btn-sm btn-primary" :disabled="!newRecipeName.trim()" @click="confirmNewRecipe">创建</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Cover image dialog -->
+        <div v-if="showCoverDialog" class="fixed inset-0 z-[60] flex items-center justify-center bg-black/50" @click.self="showCoverDialog = false">
+            <div class="bg-base-100 rounded-lg shadow-xl p-6 w-96 max-w-[90vw]">
+                <h3 class="text-lg font-bold mb-3">更换封面图</h3>
+                <!-- Current cover -->
+                <div v-if="currentCoverUrl && !coverFile" class="mb-3">
+                    <p class="text-xs text-base-content/50 mb-1">当前封面</p>
+                    <img :src="currentCoverUrl" class="w-full max-h-48 object-cover rounded" />
+                </div>
+                <!-- New cover preview -->
+                <div v-if="coverFile" class="mb-3">
+                    <p class="text-xs text-base-content/50 mb-1">新封面预览</p>
+                    <img :src="coverPreviewUrl" class="w-full max-h-48 object-cover rounded" />
+                </div>
+                <div class="mb-3">
+                    <label class="btn btn-sm btn-ghost w-full">
+                        {{ coverFile ? '重新选择' : (currentCoverUrl ? '更换图片' : '选择图片') }}
+                        <input type="file" accept="image/jpeg,image/png,image/webp" class="hidden" @change="onCoverFileChange" />
+                    </label>
+                </div>
+                <div class="flex justify-end gap-2">
+                    <button class="btn btn-sm btn-ghost" @click="showCoverDialog = false">取消</button>
+                    <button class="btn btn-sm btn-primary" :disabled="!coverFile || coverSaving" @click="saveCover">
+                        <span v-if="coverSaving" class="loading loading-spinner loading-xs"></span>
+                        <span v-else>上传</span>
+                    </button>
                 </div>
             </div>
         </div>

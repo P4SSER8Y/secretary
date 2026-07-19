@@ -13,7 +13,6 @@ const loading = ref(false)
 
 // Combined dish list: recipes + custom dishes
 interface DishTab {
-    id: string
     name: string
     isCustom: boolean
     portions?: number
@@ -21,13 +20,11 @@ interface DishTab {
 
 const dishList = computed<DishTab[]>(() => {
     const recipes: DishTab[] = (store.menu?.recipes || []).map(r => ({
-        id: r.id,
         name: r.name,
         isCustom: false,
     }))
     const customs: DishTab[] = (store.menu?.custom_dishes || []).map((cd, i) => ({
-        id: `__custom__${i}`,
-        name: cd.name,
+        name: `__custom__${i}`,
         isCustom: true,
         portions: cd.portions,
     }))
@@ -50,7 +47,7 @@ function scaleIng(ing: import('../lib/structs').Ingredient, ratio: number): impo
 
 const scaledIngredients = computed(() => {
     if (!recipeDetail.value || !store.menu) return recipeDetail.value?.ingredients || []
-    const mr = store.menu.menu_recipes.find(mr => mr.id === recipeDetail.value!.id)
+    const mr = store.menu.menu_recipes.find(mr => mr.name === recipeDetail.value!.name)
     if (!mr) return recipeDetail.value.ingredients
     const ratio = mr.portions / recipeDetail.value.servings
     if (ratio === 1) return recipeDetail.value.ingredients
@@ -59,7 +56,7 @@ const scaledIngredients = computed(() => {
 
 const currentPortions = computed(() => {
     if (!recipeDetail.value || !store.menu) return null
-    const mr = store.menu.menu_recipes.find(mr => mr.id === recipeDetail.value!.id)
+    const mr = store.menu.menu_recipes.find(mr => mr.name === recipeDetail.value!.name)
     return mr ? mr.portions : null
 })
 
@@ -72,7 +69,7 @@ async function selectDish(index: number) {
         return
     }
     loading.value = true
-    recipeDetail.value = await store.loadRecipeDetail(api, dish.id)
+    recipeDetail.value = await store.loadRecipeDetail(api, dish.name)
     loading.value = false
 }
 
@@ -83,15 +80,15 @@ if (dishList.value.length > 0 && !recipeDetail.value) {
 
 function onAdjust(delta: number) {
     if (!recipeDetail.value) return
-    store.adjustPortion(api, recipeDetail.value.id, delta)
+    store.adjustPortion(api, recipeDetail.value.name, delta)
 }
 
 function onAdjustCustom(delta: number) {
     const d = dishList.value[selectedDishIndex.value]
     if (!d?.isCustom || d.portions == null) return
     const newPortion = Math.max(0.5, Math.round((d.portions + delta) * 2) / 2)
-    // Extract the custom dish index from the id
-    const idx = parseInt(d.id.replace('__custom__', ''))
+    // Extract the custom dish index from the name
+    const idx = parseInt(d.name.replace('__custom__', ''))
     store.adjustCustomPortion(api, idx, newPortion)
 }
 
@@ -112,7 +109,7 @@ function goBack() {
         <div class="flex gap-1 px-3 py-2 overflow-x-auto">
             <button
                 v-for="(dish, i) in dishList"
-                :key="dish.id"
+                :key="dish.name"
                 class="btn btn-sm whitespace-nowrap"
                 :class="selectedDishIndex === i ? 'btn-primary' : 'btn-ghost'"
                 @click="selectDish(i)"
@@ -146,7 +143,7 @@ function goBack() {
             <!-- Cover image -->
             <img
                 v-if="recipeDetail.cover_image"
-                :src="`api/image/${recipeDetail.id}`"
+                :src="`api/image/${encodeURIComponent(recipeDetail.name)}`"
                 :alt="recipeDetail.name"
                 class="w-full aspect-[5/3] object-cover rounded-lg mt-3"
             />

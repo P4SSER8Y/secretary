@@ -43,7 +43,6 @@ pub struct ScaledIngredient {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RecipeMeta {
-    pub id: String,
     pub name: String,
     pub category: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -66,7 +65,6 @@ fn default_true() -> bool { true }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RecipeSummary {
-    pub id: String,
     pub name: String,
     pub category: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -82,7 +80,7 @@ pub struct RecipeSummary {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MenuRecipe {
-    pub id: String,
+    pub name: String,
     #[serde(default = "default_portions")]
     pub portions: f64,
 }
@@ -152,7 +150,8 @@ pub struct CreateMenuRequest {
 /// Toggle a single recipe in the shared order list.
 #[derive(Debug, Deserialize)]
 pub struct ToggleRequest {
-    pub recipe_id: String,
+    #[serde(alias = "recipe_id")]
+    pub recipe_name: String,
 }
 
 #[derive(Debug, Deserialize)]
