@@ -1,0 +1,12 @@
+[package]
+name = "s3_sync"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+rust-s3 = { version = "0.35", default-features = false, features = [
+    "tokio-rustls-tls",
+] }
+utils = { path = "../utils" }
+anyhow = "1.0"
+log = "0.4"

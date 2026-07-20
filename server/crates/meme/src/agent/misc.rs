@@ -10,6 +10,7 @@ use rocket::{
     },
 };
 use s3::Bucket;
+use s3_sync::SyncStore;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{HashMap, HashSet},
@@ -108,6 +109,7 @@ type UuidToMetaListT = HashMap<String, Arc<MetaData>>;
 type OwnerToUuidListT = HashMap<String, UuidToMetaListT>;
 static META_BUFFERS: OnceLock<RwLock<OwnerToUuidListT>> = OnceLock::new();
 static LAST_KEY_HASH: OnceLock<RwLock<HashMap<String, [u8; 8]>>> = OnceLock::new();
+static META_SYNC_STORE: OnceLock<SyncStore> = OnceLock::new();
 
 pub fn split_tags(tags: Option<&str>) -> Vec<&str> {
     tags.unwrap_or("")
@@ -374,7 +376,16 @@ pub async fn update_tags(
         .with_context(|| anyhow!("S3_SEMAPHORE not set"))?
         .acquire()
         .await;
-    upload(&meta_s3_path(&updated), &to_upload).await?;
+    let meta_key = meta_s3_path(&updated);
+    upload(&meta_key, &to_upload).await?;
+
+    // Write-through to local cache
+    if let (Some(store), Some(bucket)) = (
+        META_SYNC_STORE.get(),
+        BUCKET.get(),
+    ) {
+        let _ = store.push(bucket, &meta_key, &to_upload).await;
+    }
 
     let mut buffer = buffer.write().await;
     if let Some(owner_map) = buffer.get_mut(owner) {
@@ -409,9 +420,8 @@ pub async fn get_content_decrypted(
 
 async fn full_update(name: &str, password: Option<&str>) -> Result<()> {
     let key: Option<[u8; 32]> = password.map(|p| super::crypto::derive_key(p, name));
-    let target_subfolder: Option<String> = password.map(|p| super::crypto::compute_path_hash(p, name))
-        .or_else(|| Some(super::crypto::PLAIN_FOLDER.to_string()))
-        .filter(|_| password.is_some() || true); // always Some for the subfolder scan
+    let target_subfolder = super::crypto::compute_subfolder(password.is_some(), password, name);
+    let ts = target_subfolder.as_str();
 
     /// Process a single meta object from S3. Returns Ok(Some(meta)) if successfully
     /// parsed, Ok(None) if skipped (wrong key, etc.), or Err on hard failure.
@@ -503,7 +513,9 @@ async fn full_update(name: &str, password: Option<&str>) -> Result<()> {
         } else {
             meta_yaml.into_bytes()
         };
-        bucket.put_object(&new_path, &to_upload).await?;
+
+        let store = META_SYNC_STORE.get().with_context(|| anyhow!("META_SYNC_STORE not set"))?;
+        store.push(bucket, &new_path, &to_upload).await?;
         bucket.delete_object(&old_path).await?;
         info!("migrated meta {} -> {}", old_path, new_path);
         Ok(())
@@ -525,6 +537,7 @@ async fn full_update(name: &str, password: Option<&str>) -> Result<()> {
 
     info!("update buffer for {}", name);
     let bucket = BUCKET.get().with_context(|| anyhow!("BUCKET not set"))?;
+    let store = META_SYNC_STORE.get().with_context(|| anyhow!("META_SYNC_STORE not set"))?;
 
     // Clear existing buffer for this owner
     {
@@ -534,50 +547,35 @@ async fn full_update(name: &str, password: Option<&str>) -> Result<()> {
         buffer.write().await.remove(name);
     }
 
-    let mut any_success = false;
-    let ts = target_subfolder.as_deref().unwrap_or(super::crypto::PLAIN_FOLDER);
-
-    // Phase 1: scan target subfolder (e.g. meta/{name}/{hash}/ or meta/{name}/_plain/)
-    {
-        let prefix = format!("meta/{}/{}/", name, ts);
-        let list = bucket.list(prefix, None).await?;
-        let mut results = Vec::new();
-        for page in list {
-            for object in page.contents {
-                results.push(update_one(bucket, object.key, name, key.as_ref()));
-            }
-        }
-        for r in join_all(results).await {
-            match r {
-                Ok(Some(_)) => any_success = true,
-                _ => {}
-            }
-        }
-    }
+    // Phase 1: incremental sync from S3 to local via SyncStore (ETag-based)
+    let prefix = format!("meta/{}/{}/", name, ts);
+    let sync_result = store.sync(bucket, &prefix, None).await?;
+    info!(
+        "synced meta for {}/{}: downloaded={} skipped={}",
+        name, ts, sync_result.downloaded, sync_result.skipped
+    );
 
     // Phase 2: scan flat legacy dir (meta/{name}/*.yml, not inside subfolders)
+    // These files still need per-object handling for auto-migration
     {
-        let prefix = format!("meta/{}/", name);
-        let list = bucket.list(prefix, Some("/".to_string())).await?;
+        let legacy_prefix = format!("meta/{}/", name);
+        let list = bucket.list(legacy_prefix, Some("/".to_string())).await?;
         let mut results = Vec::new();
         for page in list {
             for object in page.contents {
                 results.push(update_one(bucket, object.key, name, key.as_ref()));
             }
         }
-        // Collect metas that need migration (flat files successfully parsed)
         let mut metas_to_migrate: Vec<MetaData> = Vec::new();
         for r in join_all(results).await {
             match r {
                 Ok(Some(meta)) if meta.path_key.is_none() => {
-                    any_success = true;
                     metas_to_migrate.push(meta);
                 }
-                Ok(Some(_)) => any_success = true,
                 _ => {}
             }
         }
-        // Run migrations concurrently (metas_to_migrate is stable now)
+        // Run migrations concurrently
         let migrations: Vec<_> = metas_to_migrate
             .iter()
             .map(|m| migrate_meta(bucket, m, ts, key.as_ref()))
@@ -604,6 +602,9 @@ async fn full_update(name: &str, password: Option<&str>) -> Result<()> {
         }
     }
 
+    // Phase 3: Load buffer from local files (if sync brought nothing new, load from existing local)
+    let any_success = load_buffer_from_local(name, password).await?;
+
     if any_success {
         info!("finish update buffer for {}", name);
         #[cfg(feature = "avif")]
@@ -614,6 +615,84 @@ async fn full_update(name: &str, password: Option<&str>) -> Result<()> {
     } else {
         Err(anyhow!("no such name: {}", name))
     }
+}
+
+/// Load META_BUFFERS from local encrypted/plaintext meta files.
+/// Returns true if any entries were loaded.
+async fn load_buffer_from_local(name: &str, password: Option<&str>) -> Result<bool> {
+    let store = META_SYNC_STORE.get().with_context(|| anyhow!("META_SYNC_STORE not set"))?;
+    let subfolder = super::crypto::compute_subfolder(password.is_some(), password, name);
+    let key: Option<[u8; 32]> = password.map(|p| super::crypto::derive_key(p, name));
+
+    let dir = store.local_path(&format!("meta/{}/{}/", name, subfolder));
+    if !dir.exists() {
+        return Ok(false);
+    }
+
+    let mut any_success = false;
+    let entries = match std::fs::read_dir(&dir) {
+        Ok(e) => e,
+        Err(_) => return Ok(false),
+    };
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().map_or(true, |e| e != "yml") {
+            continue;
+        }
+
+        let raw = match std::fs::read(&path) {
+            Ok(r) => r,
+            Err(e) => {
+                warn!("failed to read local meta {:?}: {}", path, e);
+                continue;
+            }
+        };
+
+        if super::crypto::is_encrypted(&raw) {
+            let k = match &key {
+                Some(k) => k,
+                None => {
+                    warn!("skipped encrypted local file {:?}: no password", path);
+                    continue;
+                }
+            };
+            let decrypted = match super::crypto::decrypt(&raw, k) {
+                Ok(d) => d,
+                Err(e) => {
+                    warn!("failed to decrypt local meta {:?}: {}", path, e);
+                    continue;
+                }
+            };
+            let mut meta = match serde_yaml::from_slice::<MetaData>(&decrypted) {
+                Ok(m) => m,
+                Err(e) => {
+                    warn!("failed to parse local meta {:?}: {}", path, e);
+                    continue;
+                }
+            };
+            meta.owner = name.to_string();
+            meta.lower_tags = meta.tags.iter().map(|t| t.trim().to_ascii_lowercase()).collect();
+            meta.path_key = Some(subfolder.clone());
+            insert(Arc::new(meta)).await?;
+            any_success = true;
+        } else if key.is_none() {
+            let mut meta = match serde_yaml::from_slice::<MetaData>(&raw) {
+                Ok(m) => m,
+                Err(e) => {
+                    warn!("failed to parse local meta {:?}: {}", path, e);
+                    continue;
+                }
+            };
+            meta.owner = name.to_string();
+            meta.lower_tags = meta.tags.iter().map(|t| t.trim().to_ascii_lowercase()).collect();
+            meta.path_key = Some(subfolder.clone());
+            insert(Arc::new(meta)).await?;
+            any_success = true;
+        }
+    }
+
+    Ok(any_success)
 }
 
 pub async fn force_update(name: &str, password: Option<&str>) -> Result<()> {
@@ -767,6 +846,17 @@ pub async fn upload(key: &str, data: &[u8]) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Write-through helper: push meta bytes to local cache via SyncStore.
+/// Called after successful S3 upload. Errors are logged but not propagated
+/// (local cache is best-effort, S3 is source of truth).
+pub async fn push_meta_to_local_cache(meta_key: &str, encrypted_bytes: &[u8]) {
+    if let (Some(store), Some(bucket)) = (META_SYNC_STORE.get(), BUCKET.get()) {
+        if let Err(e) = store.push(bucket, meta_key, encrypted_bytes).await {
+            warn!("push_meta_to_local_cache failed for {}: {}", meta_key, e);
+        }
+    }
+}
+
 pub async fn remove(key: &str) -> anyhow::Result<()> {
     warn!("remove {}", key);
     let bucket = BUCKET.get().with_context(|| anyhow!("BUCKET not set"))?;
@@ -783,6 +873,10 @@ pub async fn remove_meta(meta: Arc<MetaData>) -> anyhow::Result<()> {
         .await;
     if let Some(map) = buffer.get_mut(&meta.owner) {
         map.remove(&meta.uuid);
+    }
+    // Invalidate local cache
+    if let Some(store) = META_SYNC_STORE.get() {
+        store.invalidate(&meta_s3_path(&meta));
     }
     let keys = vec![
         meta_s3_path(&meta),
@@ -927,6 +1021,17 @@ async fn reencrypt_one(
         remove(&old_meta_key).await?;
     }
 
+    // Write-through to local cache
+    if let (Some(store), Some(bucket)) = (
+        META_SYNC_STORE.get(),
+        BUCKET.get(),
+    ) {
+        let _ = store.push(bucket, &new_meta_key, &meta_to_upload).await;
+        if old_meta_key != new_meta_key {
+            store.invalidate(&old_meta_key);
+        }
+    }
+
     // Update in-memory buffer
     let buffer = META_BUFFERS
         .get()
@@ -1020,6 +1125,10 @@ pub async fn init(config: &Figment) -> anyhow::Result<()> {
     S3_SEMAPHORE.get_or_init(|| Arc::new(Semaphore::new(s3_concurrency)));
     META_BUFFERS.get_or_init(|| RwLock::new(HashMap::new()));
     LAST_KEY_HASH.get_or_init(|| RwLock::new(HashMap::new()));
+
+    let meme_meta_dir = Path::new(&data_path).join("meme_meta");
+    let _ = std::fs::create_dir_all(&meme_meta_dir);
+    META_SYNC_STORE.get_or_init(|| SyncStore::new("meme/s3_etag/", meme_meta_dir));
 
     HIDE.get_or_init(|| hide.iter().map(|s| s.trim().to_ascii_lowercase()).collect());
 

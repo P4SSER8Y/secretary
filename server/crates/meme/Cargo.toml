@@ -14,6 +14,7 @@ rocket = { version = "0.5.0", features = ["json"] }
 serde = { version = "1.0.195", features = ["derive"] }
 serde_json = "1.0.111"
 utils = { path = "../utils" }
+s3_sync = { path = "../s3_sync" }
 anyhow = "1.0.79"
 figment = "0.10.13"
 log = "0.4.20"

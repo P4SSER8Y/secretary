@@ -6,6 +6,8 @@ use anyhow::Context;
 use log::{info, warn};
 use serde::Deserialize;
 
+use s3_sync::SyncStore;
+
 /// S3 sync configuration, loaded from Rocket.toml via Figment.
 #[derive(Deserialize, Clone)]
 pub struct S3Config {
@@ -61,47 +63,8 @@ fn recipes_dir() -> PathBuf {
     Path::new(utils::get_data_path()).join("recipes").join("raw")
 }
 
-// ── ETag cache (sled) ──
-
-fn etag_key(s3_key: &str) -> Vec<u8> {
-    format!("recipe/s3_etag/{}", s3_key).into_bytes()
-}
-
-fn get_cached_etag(db: &sled::Db, s3_key: &str) -> Option<String> {
-    db.get(etag_key(s3_key)).ok().flatten()
-        .and_then(|v| String::from_utf8(v.to_vec()).ok())
-}
-
-fn set_cached_etag(db: &sled::Db, s3_key: &str, etag: &str) {
-    let _ = db.insert(etag_key(s3_key), etag.as_bytes());
-}
-
-fn remove_cached_etag(db: &sled::Db, s3_key: &str) {
-    let _ = db.remove(etag_key(s3_key));
-}
-
-/// Delete all sled ETag entries whose keys no longer exist in S3.
-fn purge_stale_etags(db: &sled::Db, known_keys: &HashSet<String>) {
-    let prefix = "recipe/s3_etag/";
-    let mut stale: Vec<String> = Vec::new();
-    for item in db.scan_prefix(prefix) {
-        if let Ok((k, _)) = item {
-            if let Some(s3_key) = std::str::from_utf8(&k)
-                .ok()
-                .and_then(|s| s.strip_prefix(prefix))
-            {
-                if !known_keys.contains(s3_key) {
-                    stale.push(s3_key.to_string());
-                }
-            }
-        }
-    }
-    for key in &stale {
-        remove_cached_etag(db, key);
-    }
-    if !stale.is_empty() {
-        info!("Purged {} stale ETag entries", stale.len());
-    }
+fn sync_store() -> SyncStore {
+    SyncStore::new("recipe/s3_etag/", recipes_dir())
 }
 
 // ── Core sync logic ──
@@ -110,135 +73,42 @@ fn purge_stale_etags(db: &sled::Db, known_keys: &HashSet<String>) {
 /// preserving the directory structure and filenames from S3 keys.
 /// Uses sled-stored ETags for incremental sync: only downloads files
 /// whose ETag has changed since last sync.
-async fn sync_from_s3(
-    config: &S3Config,
-    recipes_dir: &Path,
-) -> anyhow::Result<usize> {
+async fn sync_from_s3(config: &S3Config) -> anyhow::Result<usize> {
     let bucket = build_bucket(config)?;
-    let db = utils::database::get_db();
+    let store = sync_store();
     info!("S3 sync: bucket='{}'", config.bucket);
 
-    let mut written = 0usize;
-    let mut known_keys: HashSet<String> = HashSet::new();
+    let mut total_downloaded = 0usize;
+    let mut all_known_keys: HashSet<String> = HashSet::new();
 
     // Garage returns empty contents when listing with empty prefix and no delimiter.
     // Workaround: first list with delimiter "/" to discover top-level directory
-    // prefixes, then list each directory individually with a non-empty prefix.
-    let root_list = bucket
-        .list("".to_string(), Some("/".to_string()))
-        .await
-        .context("Failed to list S3 root with delimiter")?;
+    // prefixes, then sync each directory individually with a non-empty prefix.
+    //
+    // Phase 1: list root with delimiter → sync root-level objects + discover dirs
+    let root_result = store.sync(&bucket, "", Some("/")).await?;
+    total_downloaded += root_result.downloaded;
+    all_known_keys.extend(root_result.known_keys);
+    let dir_prefixes = root_result.common_prefixes;
 
-    let mut dir_prefixes: Vec<String> = Vec::new();
-    for page in root_list {
-        for obj in page.contents {
-            written += sync_one(&bucket, &db, recipes_dir, &obj, &mut known_keys).await?;
-        }
-        if let Some(cp) = page.common_prefixes {
-            for p in cp {
-                dir_prefixes.push(p.prefix.clone());
-            }
-        }
-    }
-
+    // Phase 2: sync each directory recursively
     for dir_prefix in &dir_prefixes {
-        info!("S3 sync: listing '{}'", dir_prefix);
-        let dir_list = bucket
-            .list(dir_prefix.clone(), None)
+        let result = store
+            .sync(&bucket, dir_prefix, None)
             .await
-            .with_context(|| format!("Failed to list S3 dir '{}'", dir_prefix))?;
-
-        for page in dir_list {
-            for obj in page.contents {
-                written += sync_one(&bucket, &db, recipes_dir, &obj, &mut known_keys).await?;
-            }
-        }
+            .with_context(|| format!("Failed to sync S3 dir '{}'", dir_prefix))?;
+        total_downloaded += result.downloaded;
+        all_known_keys.extend(result.known_keys);
     }
 
-    // Clean up local files no longer present in S3
-    info!("S3 sync done: {} files downloaded, cleaning stale", written);
-    let known_set: HashSet<&str> = known_keys.iter().map(|s| s.as_str()).collect();
-    clean_stale_files(recipes_dir, recipes_dir, &known_set);
-    purge_stale_etags(&db, &known_keys);
+    // Clean up local files and ETags no longer present in S3
+    info!(
+        "S3 sync done: {} files downloaded, cleaning stale",
+        total_downloaded
+    );
+    store.cleanup(&all_known_keys);
 
-    Ok(written)
-}
-
-/// Sync a single S3 object: check ETag, skip if unchanged, otherwise download.
-/// Returns 1 if downloaded, 0 if skipped.
-async fn sync_one(
-    bucket: &s3::Bucket,
-    db: &sled::Db,
-    recipes_dir: &Path,
-    obj: &s3::serde_types::Object,
-    known_keys: &mut HashSet<String>,
-) -> anyhow::Result<usize> {
-    let key = &obj.key;
-    known_keys.insert(key.clone());
-
-    // Check ETag — skip download if unchanged AND local file exists
-    if let Some(ref remote_etag) = obj.e_tag {
-        if let Some(cached_etag) = get_cached_etag(db, key) {
-            if cached_etag == *remote_etag && recipes_dir.join(key).exists() {
-                info!("Skipped (unchanged): {}", key);
-                return Ok(0);
-            }
-        }
-    }
-
-    // Download and write
-    let data = bucket
-        .get_object(key)
-        .await
-        .with_context(|| format!("Failed to get S3 object: {}", key))?;
-
-    let file_path = recipes_dir.join(key);
-    if let Some(parent_dir) = file_path.parent() {
-        std::fs::create_dir_all(parent_dir)
-            .with_context(|| format!("Failed to create dir: {:?}", parent_dir))?;
-    }
-
-    std::fs::write(&file_path, data.as_slice())
-        .with_context(|| format!("Failed to write file: {:?}", file_path))?;
-    info!("Synced: {}", key);
-
-    // Cache the new ETag
-    if let Some(ref etag) = obj.e_tag {
-        set_cached_etag(db, key, etag);
-    }
-
-    Ok(1)
-}
-
-/// Recursively remove files under `base_dir` whose relative path (from `base_dir`)
-/// is not in `known_set`.
-fn clean_stale_files(base_dir: &Path, current: &Path, known: &HashSet<&str>) {
-    let entries = match std::fs::read_dir(current) {
-        Ok(e) => e,
-        Err(_) => return,
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.is_dir() {
-            clean_stale_files(base_dir, &path, known);
-            if std::fs::read_dir(&path).map_or(false, |mut d| d.next().is_none()) {
-                if let Err(e) = std::fs::remove_dir(&path) {
-                    warn!("Failed to remove empty dir {:?}: {}", path, e);
-                } else {
-                    info!("Removed empty dir: {:?}", path);
-                }
-            }
-        } else if let Ok(rel) = path.strip_prefix(base_dir) {
-            let rel_str = rel.to_string_lossy();
-            if !known.contains(rel_str.as_ref()) {
-                if let Err(e) = std::fs::remove_file(&path) {
-                    warn!("Failed to remove stale file {:?}: {}", path, e);
-                } else {
-                    info!("Removed stale file: {:?}", path);
-                }
-            }
-        }
-    }
+    Ok(total_downloaded)
 }
 
 fn rebuild_index(recipes_dir: &Path) -> anyhow::Result<()> {
@@ -252,8 +122,7 @@ fn rebuild_index(recipes_dir: &Path) -> anyhow::Result<()> {
 
 // ── Public API ──
 
-/// Upload a single object to S3. Used by the recipe edit endpoints
-/// to push changes before syncing back to keep the local cache consistent.
+/// Upload a single object to S3 + local copy + ETag cache.
 pub async fn push_to_s3(key: &str, data: &[u8]) -> anyhow::Result<()> {
     let config = crate::S3_CONFIG
         .get()
@@ -265,12 +134,9 @@ pub async fn push_to_s3(key: &str, data: &[u8]) -> anyhow::Result<()> {
     }
 
     let bucket = build_bucket(config)?;
-    bucket
-        .put_object(key, data)
-        .await
-        .with_context(|| format!("Failed to push to S3: {}", key))?;
+    let store = sync_store();
+    store.push(&bucket, key, data).await?;
 
-    info!("Pushed to S3: {} ({} bytes)", key, data.len());
     Ok(())
 }
 
@@ -300,7 +166,7 @@ pub async fn maybe_auto_sync() {
     let dir = recipes_dir();
 
     tokio::spawn(async move {
-        match sync_from_s3(&config, &dir).await {
+        match sync_from_s3(&config).await {
             Ok(n) => {
                 info!("Auto-sync completed: {} files from S3", n);
                 if let Err(e) = rebuild_index(&dir) {
@@ -329,7 +195,7 @@ pub async fn manual_sync_and_reload() -> anyhow::Result<usize> {
     }
 
     let dir = recipes_dir();
-    let count = sync_from_s3(config, &dir).await?;
+    let count = sync_from_s3(config).await?;
     rebuild_index(&dir)?;
 
     if let Some(state) = crate::SYNC_STATE.get() {

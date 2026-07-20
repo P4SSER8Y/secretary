@@ -2030,6 +2030,7 @@ dependencies = [
  "rocket",
  "rust-crypto",
  "rust-s3",
+ "s3_sync",
  "serde",
  "serde_json",
  "serde_yaml",
@@ -2930,6 +2931,7 @@ dependencies = [
  "rand 0.8.6",
  "rocket",
  "rust-s3",
+ "s3_sync",
  "serde",
  "serde_json",
  "serde_yaml",
@@ -3393,6 +3395,16 @@ name = "ryu"
 version = "1.0.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9774ba4a74de5f7b1c1451ed6cd5285a32eddb5cccb8cc655a4e50009e06477f"
+
+[[package]]
+name = "s3_sync"
+version = "0.25.3"
+dependencies = [
+ "anyhow",
+ "log",
+ "rust-s3",
+ "utils",
+]
 
 [[package]]
 name = "safe_arch"

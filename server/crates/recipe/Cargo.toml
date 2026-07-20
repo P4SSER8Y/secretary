@@ -11,6 +11,7 @@ serde = { version = "1.0.195", features = ["derive"] }
 serde_json = "1.0.111"
 serde_yaml = "0.9.34"
 rand = "0.8.5"
+s3_sync = { path = "../s3_sync" }
 sled = "0.34.7"
 log = "0.4.20"
 chrono = { version = "0.4.31", features = ["serde"] }

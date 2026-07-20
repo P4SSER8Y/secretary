@@ -419,6 +419,10 @@ async fn upload(
             let brief = BriefMetaData::from(&meta);
             let meta = Arc::new(meta);
             let _ = agent::insert(meta.clone()).await;
+
+            // Write-through: push meta to local cache
+            let _ = agent::push_meta_to_local_cache(&meta_key, &meta_to_upload);
+
             return (Status::Ok, serde_json::to_string(&brief).unwrap());
         } else {
             return (Status::InternalServerError, "upload failed".to_string());
