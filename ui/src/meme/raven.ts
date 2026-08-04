@@ -12,7 +12,7 @@ async function raven(gate?: string, expire?: number, timeout: number = Infinity)
     if (!gate) throw Error("Raven doesn't known where to fly");
     localStorage.removeItem('token');
     let cb = new URL('raven.html', window.location.href);
-    let url = new URL(gate);
+    let url = new URL(gate, window.location.origin);
     url.searchParams.set('c', cb.href);
     url.searchParams.set('f', 'meme');
     url.searchParams.set('t', '1');

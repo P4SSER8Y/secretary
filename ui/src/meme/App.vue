@@ -12,11 +12,24 @@ import FullScreenPreview from './pages/FullScreenPreview.vue';
 import TagCloud from './pages/TagCloud.vue';
 import ReencryptDialog from './pages/ReencryptDialog.vue';
 
-const HODOR_ENTRY = import.meta.env.VITE_HODOR_ENTRY;
 const config = useConfigStore();
 const { page, waterfall_pagnition } = storeToRefs(config);
 const api = getCurrentInstance()?.appContext.config.globalProperties.$api;
 let token: Ref<string | null> = ref(null);
+
+// 从后端拉取认证（gate）入口路径，由 meme.jwt_gate 配置决定
+async function gateLogin() {
+    let gate = '/gate/';
+    try {
+        if (api) {
+            const resp = await api.get('gate');
+            if (resp.data?.gate) gate = resp.data.gate;
+        }
+    } catch (e) {
+        console.error('fetch gate path failed, fallback', e);
+    }
+    token.value = await raven(gate);
+}
 let payload: Ref<TokenPayload | null> = computed(() => token.value && JSON.parse(atob(token.value.split('.')[1])));
 let expire: Ref<number> = ref(0);
 let display_expire = computed(() => {
@@ -285,11 +298,7 @@ onMounted(() => {
                 </li>
             </ul>
         </div>
-        <div v-else class="btn btn-ghost text-2xl" @click="
-            () => {
-                raven(HODOR_ENTRY).then((res) => (token = res));
-            }
-        ">
+        <div v-else class="btn btn-ghost text-2xl" @click="gateLogin">
             ⛭
         </div>
     </div>

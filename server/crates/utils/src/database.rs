@@ -36,6 +36,15 @@ impl Db {
         Ok(())
     }
 
+    pub fn delete(&self, key: &str) -> Result<()> {
+        let _ = self.db.remove(key)?;
+        Ok(())
+    }
+
+    pub fn scan_prefix(&self, prefix: &str) -> impl Iterator<Item = Result<(sled::IVec, sled::IVec), sled::Error>> {
+        self.db.scan_prefix(prefix)
+    }
+
     pub fn flush(&self) -> Result<()> {
         let _ = self.db.flush()?;
         Ok(())

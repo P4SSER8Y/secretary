@@ -21,6 +21,7 @@ tsdb = true
 meme = true
 album = true
 recipe = true
+gate = true
 mqtt = true
 
 [default.recipe.s3]
@@ -75,6 +76,7 @@ access_key = ""
 secret_key = ""
 jwt_secret_key = ""
 jwt_gate = ""
+jwt_expire = 3600
 hide = []
 key_salt = ""
 key_file = "meme_key.yaml"
@@ -92,4 +94,12 @@ mqtt_device_state_topic = "homeassistant/sensor/eink_album/status/state"
 mqtt_button_random_topic = "homeassistant/button/eink_album/random/command"
 device_http_endpoint = "http://{ip}/api/upload"
 preserve_original = false
+
+[default.gate]
+rp_name = ""
+rp_id = ""
+origin = ""
+jwt_secret_key = ""
+invite_code_length = 16
+invite_ttl = 60
 

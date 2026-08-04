@@ -1,9 +1,8 @@
 /// <reference types="vite/client" />
 
-interface ImportMeteEnv {
-    readonly VITE_HODOR_ENTRY: string;
+interface ImportMetaEnv {
 }
 
 interface ImportMeta {
-    readonly env: ImportMeteEnv;
+    readonly env: ImportMetaEnv;
 }

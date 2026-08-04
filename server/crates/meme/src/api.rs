@@ -37,6 +37,19 @@ static BASE: OnceLock<String> = OnceLock::new();
 static EALBUM_WIDTH: OnceLock<u32> = OnceLock::new();
 static EALBUM_HEIGHT: OnceLock<u32> = OnceLock::new();
 
+/// 规范化 gate 入口路径 —— 保证以 `/` 结尾（如 `/gate/`），否则浏览器/vite 会 404
+fn gate_url() -> String {
+    let gate = GATE.get().cloned().unwrap_or_default();
+    if gate.is_empty() {
+        return gate;
+    }
+    if gate.ends_with('/') {
+        gate
+    } else {
+        format!("{}/", gate)
+    }
+}
+
 #[get("/check?<token>")]
 async fn check_with_token(
     token: &str,
@@ -104,7 +117,7 @@ async fn login() -> Redirect {
     debug!("redirect to {}", callback);
 
     let gate = url::Url::parse_with_params(
-        GATE.get().unwrap(),
+        &gate_url(),
         &[("c", callback.as_str()), ("f", "meme"), ("t", "1")],
     )
     .unwrap();
@@ -117,6 +130,13 @@ async fn login() -> Redirect {
 async fn logout(cookies: &CookieJar<'_>) -> &'static str {
     cookies.remove("token");
     "Bye"
+}
+
+/// 返回认证（gate）入口路径，值由 `meme.jwt_gate` 配置决定。
+/// 前端据此打开认证页面，不再依赖环境变量。
+#[get("/gate")]
+fn gate_info() -> Json<serde_json::Value> {
+    Json(serde_json::json!({ "gate": gate_url() }))
 }
 
 #[get("/<_..>", rank = 99)]
@@ -638,6 +658,7 @@ pub async fn build(
             random,
             login,
             logout,
+            gate_info,
             upload,
             get_raw,
             get_thumbnail,

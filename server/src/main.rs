@@ -45,6 +45,11 @@ enum Commands {
         #[arg(short, long)]
         password: String,
     },
+    /// Gate WebAuthn credential & invite management (CLI only)
+    Gate {
+        #[command(subcommand)]
+        command: gate::cli::GateCommand,
+    },
 }
 
 fn is_enabled(config: &Figment, name: &str, default: bool) -> bool {
@@ -171,6 +176,9 @@ async fn go(config: &Figment) -> Result<(), rocket::Error> {
     if is_enabled(&config, "recipe", false) {
         wtf = recipe::build("/recipe/api/", wtf, &config).await.unwrap();
     }
+    if is_enabled(&config, "gate", false) {
+        wtf = gate::build("/gate/api/", wtf, &config).await.unwrap();
+    }
     if let Ok(ui) = config.find_value("ui_path") {
         if let Some(ui) = ui.as_str() {
             use rocket::fs::{FileServer, Options};
@@ -267,6 +275,18 @@ async fn main() -> Result<(), rocket::Error> {
             Ok(())
         }
         Some(Commands::Decrypt { owner, password }) => decrypt::run(&owner, &password),
+        Some(Commands::Gate { command }) => {
+            // Ensure data_path is initialized (normally done in go())
+            if let Ok(data) = config.find_value("data_path") {
+                if let Some(data) = data.as_str() {
+                    utils::init_data_path(data);
+                }
+            }
+            if let Err(e) = gate::cli::handle(command) {
+                eprintln!("Error: {}", e);
+            }
+            Ok(())
+        }
         Some(Commands::Go) | None => go(&config).await,
     }
 }
