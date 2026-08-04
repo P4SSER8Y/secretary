@@ -2,7 +2,7 @@
 import { computed, getCurrentInstance, onMounted, provide, Ref, ref, watch } from 'vue';
 import Waterfall from './pages/Waterfall.vue';
 import Gallery from './pages/Gallery.vue';
-import { raven } from './raven';
+import { ravenOpen, ravenWait, ravenUrl } from './raven';
 import { ApiListParams, MemeList, Meta, PageType, SortKey, TokenPayload } from './lib/struct';
 import { debounce } from 'lodash';
 import { useConfigStore } from './lib/configStore';
@@ -19,16 +19,26 @@ let token: Ref<string | null> = ref(null);
 
 // 从后端拉取认证（gate）入口路径，由 meme.jwt_gate 配置决定
 async function gateLogin() {
-    let gate = '/gate/';
+    // window.open 必须在用户手势的同步调用栈内执行，否则 Safari 会拦截弹窗。
+    // 先同步打开同源占位窗口，再在后台拉取 gate 路径后导航到真实认证页。
+    let win: Window;
     try {
+        win = ravenOpen();
+    } catch (e) {
+        console.error('open gate window failed', e);
+        return;
+    }
+    try {
+        let gate = '/gate/';
         if (api) {
             const resp = await api.get('gate');
             if (resp.data?.gate) gate = resp.data.gate;
         }
+        win.location.href = ravenUrl(gate).href;
     } catch (e) {
         console.error('fetch gate path failed, fallback', e);
     }
-    token.value = await raven(gate);
+    token.value = await ravenWait(win);
 }
 let payload: Ref<TokenPayload | null> = computed(() => token.value && JSON.parse(atob(token.value.split('.')[1])));
 let expire: Ref<number> = ref(0);
