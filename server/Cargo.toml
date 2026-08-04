@@ -38,6 +38,8 @@ env_logger = "0.10.1"
 clap = { version = "4.4.13", features = ["derive"] }
 influxdb2 = { version = "0.4.5", default-features = false, features = ["rustls"] }
 cron = "0.12.0"
+# webauthn-rs → webauthn-attestation-ca 依赖 openssl；vendored 让 musl 交叉编译自带 OpenSSL 源码
+openssl = { version = "0.10", features = ["vendored"] }
 minisign-verify = "0.2.4"
 
 [build-dependencies]

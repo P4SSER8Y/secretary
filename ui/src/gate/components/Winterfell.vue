@@ -32,10 +32,10 @@ onMounted(async () => {
 });
 
 const MAP_INFO_LEVEL = new Map([
-  [LEVEL.INFO, "level-info"],
-  [LEVEL.WARNING, "level-warning"],
-  [LEVEL.ERROR, "level-error"],
-  [LEVEL.SUCCESS, "level-success"],
+  [LEVEL.INFO, "alert-info"],
+  [LEVEL.WARNING, "alert-warning"],
+  [LEVEL.ERROR, "alert-error"],
+  [LEVEL.SUCCESS, "alert-success"],
 ]);
 
 function pushMessage(info: info_t) {
@@ -120,30 +120,6 @@ function onRegistered(...args: unknown[]) {
 </template>
 
 <style scoped lang="postcss">
-.is-active {
-  @apply active font-bold;
-}
-
-.is-inactive {
-  @apply text-secondary;
-}
-
-.level-info {
-  @apply alert-info;
-}
-
-.level-warning {
-  @apply alert-warning;
-}
-
-.level-error {
-  @apply alert-error;
-}
-
-.level-success {
-  @apply alert-success;
-}
-
 .popup-enter-from,
 .popup-leave-to {
   opacity: 0;
