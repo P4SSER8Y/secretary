@@ -9,7 +9,7 @@ enum FileType {
 };
 
 const api = getCurrentInstance()?.appContext.config.globalProperties.$api;
-const emit = defineEmits<{ done: [meta: Meta] }>();
+const emit = defineEmits<{ done: [meta: Meta]; begin: [] }>();
 let show_drag = ref(false);
 let is_uploading = ref(false);
 let file: Ref<File | null> = ref(null);
@@ -72,6 +72,7 @@ function upload() {
 onMounted(() => {
     document.ondragenter = () => {
         show_drag.value = true;
+        emit('begin');
         file.value = null;
         source.value = null;
         is_uploading.value = false;

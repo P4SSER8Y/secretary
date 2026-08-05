@@ -118,9 +118,7 @@ function remove_tag(idx: number) {
 onMounted(() => {
     is_hold_on.value = false;
     delete_code.value = null;
-    document.ondragenter = () => {
-        window.addEventListener('keydown', handle_key_press);
-    };
+    window.addEventListener('keydown', handle_key_press);
 });
 
 onBeforeUnmount(() => {

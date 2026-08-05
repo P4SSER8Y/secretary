@@ -127,6 +127,11 @@ function show(meta: Meta) {
 }
 
 function uploaded(meta: Meta) {
+    if (page.value == PageType.Waterfall) {
+        is_randomized.value = false;
+        sort.value = SortKey.timestamp;
+        is_asc.value = false;
+    }
     update();
     console.log(`uploaded ${meta.uuid} with tags: ${meta.tags}`);
     show(meta);
@@ -314,7 +319,7 @@ onMounted(() => {
     </div>
     <Waterfall v-if="token && page == PageType.Waterfall" :data="data" @show="show"> </Waterfall>
     <Gallery v-else-if="token && page == PageType.Gallery" :data="data"></Gallery>
-    <Upload v-if="token && !single_preview" @done="uploaded"></Upload>
+    <Upload v-if="token" @done="uploaded" @begin="() => (single_preview = null)"></Upload>
     <FullScreenPreview v-if="token && single_preview" :meta="single_preview" @end="() => (single_preview = null)"
         @deleted="(uuid) => delete_item(uuid)"
         @tags-updated="() => update()">
