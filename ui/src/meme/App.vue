@@ -59,8 +59,12 @@ let is_tag_cloud_shown = ref(false);
 let reencrypt_shown = ref(false);
 let password: Ref<string> = ref('');
 provide('password', password);
+// 上次真正应用过的密码，用于跳过"点击输入框但没改密码"这类无意义刷新。
+let committed_password = '';
 
-const update = debounce(async function update() {
+// 拉取列表（GET /list）。服务端会按当前密码惰性判断是否需要同步，
+// 同一密码只同步一次，因此登录/换密码都能在第一次拉取时拿到新数据。
+async function fetch_list() {
     if (!token.value) {
         data.value = null;
         return;
@@ -93,33 +97,56 @@ const update = debounce(async function update() {
     } catch {
         data.value = null;
     }
-}, 500);
+}
+
+const update = debounce(fetch_list, 500);
 
 const force_update_cost: Ref<string | null> = ref(null);
-const force_update = debounce(function () {
-    if (token.value) {
-        data.value = null;
-        force_update_cost.value = "0.00";
-        let now = new Date().getTime();
-        let timer_id = setInterval(() => {
-            let cost = Math.floor((new Date().getTime() - now)) / 1000;
-            force_update_cost.value = cost.toFixed(2);
-        }, 33);
-        api?.get('update')
-            .then(() => {
-                update();
-            })
-            .finally(() => {
-                clearTimeout(timer_id);
-                force_update_cost.value = null;
-            });
+let syncing = false;
+let sync_pending = false;
+let sync_cost_timer: ReturnType<typeof setInterval> | undefined;
+
+// 全量重新同步（GET /update）后再拉列表，仅由手动 "update" 菜单触发。
+// 合并并发调用：同一时刻至多一个同步在跑，期间新来的请求只记一个 pending，
+// 等当前同步结束后用最新密码补跑一次，避免重复同步与重复倒计时。
+async function do_sync() {
+    if (!token.value) return;
+    if (syncing) {
+        sync_pending = true;
+        return;
     }
-}, 1000);
+    syncing = true;
+    data.value = null;
+    force_update_cost.value = "0.00";
+    let start = new Date().getTime();
+    sync_cost_timer = setInterval(() => {
+        force_update_cost.value = ((new Date().getTime() - start) / 1000).toFixed(2);
+    }, 100);
+    try {
+        await api?.get('update');
+        await fetch_list();
+    } catch (e) {
+        console.error('sync failed', e);
+    } finally {
+        clearInterval(sync_cost_timer);
+        sync_cost_timer = undefined;
+        force_update_cost.value = null;
+        syncing = false;
+        if (sync_pending) {
+            sync_pending = false;
+            void do_sync();
+        }
+    }
+}
+const force_update = debounce(() => void do_sync(), 1000);
 
 async function logout() {
     filter.value = '';
     token.value = null;
     data.value = null;
+    password.value = '';
+    committed_password = '';
+    sessionStorage.removeItem('password');
 }
 
 function show(meta: Meta) {
@@ -164,7 +191,9 @@ watch(token, (newVal) => {
         const payload = JSON.parse(atob(newVal.split('.')[1]));
         name.value = payload.n;
         document.cookie = `token=${newVal};maxAge=-1`;
-        update();
+        // 登录即全量同步一次，保证看到的是最新数据，无需手动 update。
+        // 后续 `list` 按密钥惰性同步，同一密码不再重复打 S3。
+        void do_sync();
         check_token();
     } else {
         document.cookie = `token=`;
@@ -174,14 +203,33 @@ watch(token, (newVal) => {
 
 watch([filter, is_asc, sort, is_randomized], update);
 
-watch(password, (newVal) => {
-    if (newVal) {
-        sessionStorage.setItem('password', newVal);
+// 密码即时写入 sessionStorage，让后续所有请求带上当前密码。
+watch(password, (v) => {
+    if (v) {
+        sessionStorage.setItem('password', v);
     } else {
         sessionStorage.removeItem('password');
-        force_update();
     }
 });
+
+// 密码稳定（输入停顿）后自动应用：只拉列表，由服务端按密钥惰性同步；
+// 密码未变则跳过。去掉了原来的 blur/空值强制 update。
+const apply_password = debounce(() => {
+    if (password.value !== committed_password) {
+        committed_password = password.value;
+        update();
+    }
+}, 800);
+watch(password, apply_password);
+
+// 回车立即应用密码。
+function commit_password() {
+    apply_password.cancel();
+    if (password.value !== committed_password) {
+        committed_password = password.value;
+        update();
+    }
+}
 
 onMounted(() => {
     token.value =
@@ -190,6 +238,8 @@ onMounted(() => {
             .find((c) => c.trim().startsWith('token='))
             ?.split('=')[1] ?? null;
     sessionStorage.removeItem('password');
+    password.value = '';
+    committed_password = '';
 });
 </script>
 
@@ -237,8 +287,7 @@ onMounted(() => {
                                     placeholder="vault password"
                                     class="input input-ghost input-xs w-full"
                                     v-model="password"
-                                    @keyup.enter="force_update()"
-                                    @blur="force_update()"
+                                    @keyup.enter="commit_password()"
                                 />
                             </div>
                         </li>

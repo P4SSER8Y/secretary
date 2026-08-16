@@ -108,7 +108,9 @@ static HIDE: OnceLock<Vec<String>> = OnceLock::new();
 type UuidToMetaListT = HashMap<String, Arc<MetaData>>;
 type OwnerToUuidListT = HashMap<String, UuidToMetaListT>;
 static META_BUFFERS: OnceLock<RwLock<OwnerToUuidListT>> = OnceLock::new();
-static LAST_KEY_HASH: OnceLock<RwLock<HashMap<String, [u8; 8]>>> = OnceLock::new();
+/// 记录每个 owner 当前 buffer 所对应的密钥（`None` = 明文 `_plain` 视图）。
+/// `list` 据此判断是否需要重新同步：密钥一致就直接返回 buffer，避免每次请求都打 S3。
+static LAST_KEY_HASH: OnceLock<RwLock<HashMap<String, Option<[u8; 8]>>>> = OnceLock::new();
 static META_SYNC_STORE: OnceLock<SyncStore> = OnceLock::new();
 
 pub fn split_tags(tags: Option<&str>) -> Vec<&str> {
@@ -418,7 +420,7 @@ pub async fn get_content_decrypted(
     }
 }
 
-async fn full_update(name: &str, password: Option<&str>) -> Result<()> {
+async fn full_update(name: &str, password: Option<&str>) -> Result<bool> {
     let key: Option<[u8; 32]> = password.map(|p| super::crypto::derive_key(p, name));
     let target_subfolder = super::crypto::compute_subfolder(password.is_some(), password, name);
     let ts = target_subfolder.as_str();
@@ -605,15 +607,31 @@ async fn full_update(name: &str, password: Option<&str>) -> Result<()> {
     // Phase 3: Load buffer from local files (if sync brought nothing new, load from existing local)
     let any_success = load_buffer_from_local(name, password).await?;
 
+    // 记录本次同步后 buffer 持有的密钥（None=明文），供 `list` 跳过重复同步。
+    // 空文件夹（密码错误）也记录，避免每次 list 都重新打 S3。
+    {
+        let marker: Option<[u8; 8]> = password.map(|p| {
+            let k = super::crypto::derive_key(p, name);
+            let mut h = [0u8; 8];
+            h.copy_from_slice(&k[..8]);
+            h
+        });
+        LAST_KEY_HASH
+            .get_or_init(|| RwLock::new(HashMap::new()))
+            .write()
+            .await
+            .insert(name.to_string(), marker);
+    }
+
     if any_success {
         info!("finish update buffer for {}", name);
         #[cfg(feature = "avif")]
         if let Some(k) = key {
             tokio::spawn(format_all(name.to_string(), Some(k)));
         }
-        Ok(())
+        Ok(true)
     } else {
-        Err(anyhow!("no such name: {}", name))
+        Ok(false)
     }
 }
 
@@ -695,28 +713,50 @@ async fn load_buffer_from_local(name: &str, password: Option<&str>) -> Result<bo
     Ok(any_success)
 }
 
-pub async fn force_update(name: &str, password: Option<&str>) -> Result<()> {
+/// 无条件从 S3 重新同步（手动 update）。
+pub async fn force_update(name: &str, password: Option<&str>) -> Result<bool> {
+    force_update_inner(name, password, false).await
+}
+
+/// 判断 buffer 当前持有的密钥是否与目标一致（None=明文视图）。
+/// 一致则 `list` 无需重新同步，直接返回缓存。
+async fn buffer_key_matches(name: &str, password: Option<&str>) -> bool {
+    let target: Option<[u8; 8]> = password.map(|p| {
+        let k = super::crypto::derive_key(p, name);
+        let mut h = [0u8; 8];
+        h.copy_from_slice(&k[..8]);
+        h
+    });
+    let stored = {
+        let m = LAST_KEY_HASH
+            .get_or_init(|| RwLock::new(HashMap::new()))
+            .read()
+            .await;
+        m.get(name).map(|v| *v)
+    };
+    stored == Some(target)
+}
+
+/// 串行化同名更新。
+/// `dedup=true`（`list` 路径）时，若已有同步正在产出相同密钥的 buffer，则等它完成后直接返回，
+/// 避免并发请求触发多余的全量同步。
+async fn force_update_inner(name: &str, password: Option<&str>, dedup: bool) -> Result<bool> {
     static LOCK: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
-    let mut updating = false;
-    {
+
+    loop {
         let set = LOCK.get_or_init(|| Mutex::new(HashSet::new())).lock().await;
-        if set.contains(name) {
-            updating = true;
+        if !set.contains(name) {
+            break;
         }
+        drop(set);
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
     }
-    if updating {
-        info!("updating buffer for {}", name);
-        loop {
-            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-            {
-                let set = LOCK.get_or_init(|| Mutex::new(HashSet::new())).lock().await;
-                if !set.contains(name) {
-                    info!("waited buffer for {}", name);
-                    break;
-                }
-            }
-        }
+
+    if dedup && buffer_key_matches(name, password).await {
+        info!("skip update buffer for {} (already up to date)", name);
+        return Ok(true);
     }
+
     {
         let mut set = LOCK.get_or_init(|| Mutex::new(HashSet::new())).lock().await;
         set.insert(name.to_string());
@@ -730,21 +770,6 @@ pub async fn force_update(name: &str, password: Option<&str>) -> Result<()> {
         set.remove(name);
     }
     t
-}
-
-async fn update(name: &str) -> Result<()> {
-    let buffer = META_BUFFERS
-        .get()
-        .with_context(|| anyhow!("BUFFER not set"))?
-        .read()
-        .await;
-    match !buffer.contains_key(name) {
-        true => {
-            drop(buffer);
-            force_update(name, None).await
-        }
-        false => Ok(()),
-    }
 }
 
 pub async fn get_meta_by_uuid(name: &str, uuid: &str) -> Result<Arc<MetaData>> {
@@ -767,25 +792,10 @@ pub async fn list(
     filter: Option<&str>,
     password: Option<&str>,
 ) -> Result<Vec<Arc<MetaData>>> {
-    if let Some(pwd) = password {
-        let key = super::crypto::derive_key(pwd, name);
-        let key_hash: [u8; 8] = key[..8].try_into().unwrap();
-        let hash_map = LAST_KEY_HASH
-            .get_or_init(|| RwLock::new(HashMap::new()))
-            .read()
-            .await;
-        if hash_map.get(name) != Some(&key_hash) {
-            drop(hash_map);
-            force_update(name, Some(pwd)).await?;
-            LAST_KEY_HASH
-                .get()
-                .unwrap()
-                .write()
-                .await
-                .insert(name.to_string(), key_hash);
-        }
-    } else {
-        let _ = update(name).await;
+    // 按当前请求的密钥（明文=None）判断 buffer 是否已就绪；未就绪才触发同步。
+    // 首次登录、切换明文/加密视图、换密码都会走到这里，且同一密码只同步一次。
+    if !buffer_key_matches(name, password).await {
+        force_update_inner(name, password, true).await?;
     }
     let buffer = META_BUFFERS
         .get()
@@ -927,7 +937,7 @@ pub async fn reencrypt(
                 .unwrap()
                 .write()
                 .await
-                .insert(name.to_string(), new_key_hash);
+                .insert(name.to_string(), Some(new_key_hash));
         }
     }
 
