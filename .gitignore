@@ -1,3 +1,5 @@
 /build
 /target
 .claude/settings.local.json
+# 导航页链接配置：跟部署走，不进仓库
+ui/public/nav/links.json

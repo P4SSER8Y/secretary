@@ -8,6 +8,10 @@ limits = { file = 67108864, data-form = 67108864, bytes = 67108864 }
 ui_path = "ui"
 host = ""
 
+# 导航页链接配置：相对 data_path，也可写绝对路径
+[default.nav]
+links = "nav/links.json"
+
 [default.verify]
 public_key = ""
 

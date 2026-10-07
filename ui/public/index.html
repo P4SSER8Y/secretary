@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#e60012">
+<meta name="color-scheme" content="dark">
+<title>NAVI</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23000'/%3E%3Cpath d='M16 3l3.1 8.2H28l-7.2 5.2 2.7 8.6L16 20l-7.5 5 2.7-8.6L4 11.2h8.9z' fill='%23e60012'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/nav/p5.css">
+</head>
+<body>
+
+<!-- 载入／跳转用的斜纹擦除动画 -->
+<div class="wipe" id="wipe" aria-hidden="true">
+  <span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+</div>
+
+<!-- 背景：红色斜块 + 网点 + 扫描线 + 噪点 -->
+<div class="bg" id="bg" aria-hidden="true">
+  <div class="slash s1"></div>
+  <div class="slash s2"></div>
+  <div class="slash s3"></div>
+  <div class="bg-star">
+    <svg viewBox="0 0 100 100"><path d="M50 2 57.6 36.2 87 19 66.4 46.9 98 50 66.4 53.1 87 81 57.6 63.8 50 98 42.4 63.8 13 81 33.6 53.1 2 50 33.6 46.9 13 19 42.4 36.2Z" fill="currentColor"/></svg>
+  </div>
+  <div class="dots"></div>
+  <div class="scan"></div>
+  <div class="grain"></div>
+  <div class="wm"></div>
+</div>
+
+<!-- 顶部 HUD -->
+<header class="hud">
+  <div class="brand">
+    <span class="brand-bar"></span>
+    <h1 id="title"><span class="red">NAVI</span></h1>
+    <p class="sub" id="subText"></p>
+  </div>
+  <div class="hud-right">
+    <div class="clock" aria-label="时间">
+      <div class="clock-face">
+        <span class="clock-day" id="clkDay">—</span>
+        <span class="clock-time" id="clkTime">--:--:--</span>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- 菜单：内容来自 /nav/links.json（部署时提供，不在仓库里） -->
+<main class="stage">
+  <nav class="menu-wrap" aria-label="导航菜单">
+    <ul class="menu" id="menu"></ul>
+  </nav>
+</main>
+
+<!-- 点击时的爆闪 -->
+<div class="splash" id="splash" aria-hidden="true"><i></i></div>
+
+<script src="/nav/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,355 @@
+/* ==========================================================================
+ * PHANTOM NAVI — Persona 5 风格导航页
+ * 纯手写 CSS，无框架依赖。所有动效均为 CSS animation / transition。
+ * ========================================================================== */
+
+@font-face{
+  font-family:"P5Display";
+  src:url("fonts/anton-latin.woff2") format("woff2");
+  font-weight:400;font-style:normal;font-display:swap;
+  unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+2000-206F,U+2074,U+20AC,U+2122,U+2190-2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+@font-face{
+  font-family:"P5Heavy";
+  src:url("fonts/archivoblack-latin.woff2") format("woff2");
+  font-weight:400;font-style:normal;font-display:swap;
+  unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+2000-206F,U+2074,U+20AC,U+2122,U+2190-2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+
+/* ========================================================================
+ * 调色板 —— 固定 P5 怪盗红，不再做主题切换
+ *   --c1 主色（斜块/序号/图标/擦除条）  --c2 亮档（选中时的说明文字）
+ *   --c3 暗档（左下暗色斜块）          --c1-rgb 主色 RGB，用于发光阴影
+ * ======================================================================== */
+:root{
+  --c1:#e60012;--c2:#ff3d4c;--c3:#7d000a;--c1-rgb:230,0,18;
+  --glow-1:#40000a;--glow-2:#180006;
+  --bg:#060608;--ink:#0a0a0e;--ink-2:#171720;--ink-3:#12121a;
+  --paper:#f2efe8;--cyan:#2bd0f5;
+}
+
+:root{
+  --skew:-11deg;
+  --unskew:9.5deg;
+  --pop:cubic-bezier(.2,1.45,.35,1);
+  --snap:cubic-bezier(.62,0,.18,1);
+
+  --poly:polygon(.8% 12%,97.5% 0%,100% 84%,3.2% 100%);
+
+  --font-ui:"PingFang SC","HarmonyOS Sans SC","Microsoft YaHei UI","Microsoft YaHei","Noto Sans SC","Source Han Sans SC","WenQuanYi Micro Hei",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --font-disp:"P5Display","Archivo Black","Impact","Arial Black",var(--font-ui);
+}
+
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  background:var(--bg);color:#fff;overflow:hidden;
+  font-family:var(--font-ui);
+  font-weight:700;
+  -webkit-font-smoothing:antialiased;
+  text-rendering:optimizeLegibility;
+}
+::selection{background:var(--c1);color:#fff}
+a{color:inherit}
+
+/* ============================ 背景 ============================ */
+.bg{
+  position:fixed;inset:-3vmax;z-index:0;overflow:hidden;pointer-events:none;
+  transform:translate3d(calc(var(--px,0) * 12px),calc(var(--py,0) * 12px),0);
+  transition:transform .6s cubic-bezier(.2,.7,.3,1);
+  background:
+    radial-gradient(120% 90% at 94% 4%,var(--glow-1) 0%,var(--glow-2) 32%,var(--ink) 62%),
+    var(--bg);
+}
+.slash{position:absolute;background:var(--c1);clip-path:polygon(30% 0,100% 0,70% 100%,0 100%)}
+.s1{width:42vmax;height:160vmax;right:-16vmax;top:-46vmax;opacity:.92;
+    filter:drop-shadow(0 0 70px rgba(var(--c1-rgb),.45));
+    animation:drift1 24s ease-in-out infinite}
+.s2{width:13vmax;height:130vmax;right:20vmax;top:-34vmax;background:#fff;opacity:.075;
+    animation:drift2 30s ease-in-out infinite}
+.s3{width:34vmax;height:44vmax;left:-13vmax;bottom:-20vmax;background:var(--c3);opacity:.55;
+    animation:drift1 34s ease-in-out infinite reverse}
+@keyframes drift1{
+  0%,100%{transform:translate3d(0,0,0) rotate(17deg)}
+  50%{transform:translate3d(-1.8vmax,2vmax,0) rotate(20deg)}
+}
+@keyframes drift2{
+  0%,100%{transform:translate3d(0,0,0) rotate(17deg)}
+  50%{transform:translate3d(1.4vmax,-1.6vmax,0) rotate(15deg)}
+}
+
+/* 网点（半调） */
+.dots{
+  position:absolute;inset:0;opacity:.38;
+  background-image:radial-gradient(rgba(255,255,255,.2) 1.3px,transparent 1.5px);
+  background-size:11px 11px;
+  -webkit-mask-image:linear-gradient(113deg,rgba(0,0,0,0) 26%,rgba(0,0,0,.95) 60%,rgba(0,0,0,.15) 100%);
+  mask-image:linear-gradient(113deg,rgba(0,0,0,0) 26%,rgba(0,0,0,.95) 60%,rgba(0,0,0,.15) 100%);
+  animation:dotsDrift 34s linear infinite;
+}
+@keyframes dotsDrift{to{background-position:231px 231px}}
+
+/* 扫描线 */
+.scan{
+  position:absolute;inset:0;opacity:.55;
+  background:repeating-linear-gradient(to bottom,rgba(255,255,255,.05) 0 1px,transparent 1px 4px);
+  animation:scanRun 6s linear infinite;
+}
+@keyframes scanRun{to{transform:translateY(4px)}}
+
+/* 噪点 */
+.grain{
+  position:absolute;inset:-20%;opacity:.075;mix-blend-mode:overlay;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* 竖排水印 */
+.wm{
+  position:absolute;left:1.6vmax;top:50%;white-space:nowrap;pointer-events:none;
+  writing-mode:vertical-rl;transform:translateY(-50%) rotate(180deg);
+  font-family:var(--font-disp);font-size:clamp(40px,7.4vmax,124px);letter-spacing:.04em;
+  color:transparent;-webkit-text-stroke:2px rgba(255,255,255,.10);
+}
+
+/* 左侧巨大的慢速旋转尖刺星（填补留白 + 持续动效） */
+.bg-star{
+  position:absolute;left:22%;top:52%;width:min(58vmin,620px);aspect-ratio:1;
+  transform:translate(-50%,-50%);color:var(--c1);opacity:.16;
+  animation:bgSpin 70s linear infinite;
+}
+.bg-star svg{width:100%;height:100%;display:block;
+  filter:drop-shadow(4px 4px 0 rgba(255,255,255,.35))}
+@keyframes bgSpin{from{transform:translate(-50%,-50%) rotate(0)}to{transform:translate(-50%,-50%) rotate(360deg)}}
+
+/* ============================ 顶栏 ============================ */
+.hud{
+  position:fixed;left:0;right:0;top:0;z-index:6;
+  display:flex;justify-content:space-between;align-items:flex-start;gap:20px;
+  padding:clamp(16px,3.2vh,34px) clamp(18px,4vw,58px);
+  pointer-events:none;
+}
+.brand{position:relative;padding-left:20px}
+.brand-bar{
+  position:absolute;left:0;top:6px;bottom:8px;width:9px;background:var(--c1);
+  transform:skewX(-12deg);box-shadow:0 0 24px rgba(var(--c1-rgb),.85);
+  animation:barPulse 2.6s ease-in-out infinite;
+}
+@keyframes barPulse{0%,100%{transform:skewX(-12deg) scaleY(1)}50%{transform:skewX(-12deg) scaleY(.86)}}
+h1{
+  font-family:var(--font-disp);font-weight:400;text-transform:uppercase;
+  font-size:clamp(32px,6vh,62px);line-height:.94;letter-spacing:.01em;
+  transform:skewX(-10deg);text-shadow:3px 3px 0 rgba(0,0,0,.55);
+}
+h1 .red{color:var(--c1);text-shadow:3px 3px 0 rgba(0,0,0,.55),0 0 26px rgba(var(--c1-rgb),.55)}
+.sub{
+  margin-top:8px;font-family:var(--font-disp);
+  font-size:clamp(11px,1.7vh,15px);font-weight:400;letter-spacing:.24em;
+  color:#d8d8e2;transform:skewX(-10deg);
+}
+.clock{
+  transform:skewX(-11deg);background:rgba(13,13,18,.9);
+  border:2px solid rgba(255,255,255,.16);border-left:6px solid var(--c1);
+  padding:6px 14px 7px;display:flex;flex-direction:column;align-items:flex-end;
+  box-shadow:6px 6px 0 rgba(0,0,0,.45);
+}
+.clock-day{font-size:clamp(10px,1.4vh,13px);letter-spacing:.12em;color:#c9c9d4}
+.clock-time{font-family:var(--font-disp);font-size:clamp(18px,2.8vh,30px);line-height:1;letter-spacing:.05em}
+
+/* 右上角：时钟 */
+.hud-right{display:flex;flex-direction:column;align-items:flex-end;gap:10px}
+
+/* ============================ 舞台 / 菜单 ============================ */
+.stage{
+  position:relative;z-index:4;min-height:100%;
+  display:flex;flex-direction:column;justify-content:center;align-items:flex-end;
+  padding:clamp(104px,17vh,150px) clamp(18px,6vw,120px) clamp(44px,7vh,72px) clamp(18px,4vw,64px);
+}
+.menu-wrap{width:100%;display:flex;justify-content:flex-end}
+ul.menu{list-style:none;width:min(620px,100%);display:flex;flex-direction:column;gap:clamp(10px,1.9vh,20px)}
+.row{display:flex}
+
+/* 没配置导航项时的占位提示 */
+.empty{
+  width:100%;padding:18px 20px;color:#c9c9d4;font-weight:700;letter-spacing:.06em;
+  background:rgba(255,255,255,.05);border:1px dashed rgba(255,255,255,.28);
+  transform:skewX(var(--skew));
+}
+
+.item{
+  --accent:var(--c1);
+  position:relative;isolation:isolate;
+  display:flex;align-items:center;gap:clamp(12px,1.5vw,20px);
+  width:calc(100% - 54px);margin-left:auto;
+  height:clamp(62px,9.2vh,92px);
+  padding:0 clamp(14px,1.8vw,26px) 0 clamp(14px,1.6vw,24px);
+  text-decoration:none;color:#fff;
+  cursor:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='34' height='34' viewBox='0 0 34 34'%3E%3Cpath d='M7 3l21 11-8.6 2 4.4 9.6-4 1.8-4.4-9.6-5.4 5.6z' fill='%23e60012' stroke='%23fff' stroke-width='2'/%3E%3C/svg%3E") 7 3,pointer;
+  opacity:0;transform:translate3d(96px,0,0) skewX(-30deg);
+  transition:transform .62s var(--pop),opacity .38s ease,width .3s var(--pop);
+  outline:none;-webkit-tap-highlight-color:transparent;
+}
+.item.in{opacity:1;transform:translate3d(0,0,0) skewX(var(--skew))}
+.item.on{width:100%;transform:translate3d(-8px,0,0) scale(1.015) skewX(var(--skew))}
+.item.on.wob{animation:popWob .58s var(--pop) 1}
+@keyframes popWob{
+  0%{transform:translate3d(-8px,0,0) scale(1.015) skewX(var(--skew))}
+  30%{transform:translate3d(-16px,0,0) scale(1.055) rotate(-1.1deg) skewX(var(--skew))}
+  62%{transform:translate3d(-4px,0,0) scale(.99) rotate(.55deg) skewX(var(--skew))}
+  100%{transform:translate3d(-8px,0,0) scale(1.015) skewX(var(--skew))}
+}
+.item:focus-visible .p-ink{outline:3px solid var(--cyan);outline-offset:4px}
+
+/* 三层斜块 —— P5 的“贴纸”层叠：红在左上、白在右下（硬阴影感） */
+.poly{position:absolute;inset:0;pointer-events:none;clip-path:var(--poly)}
+.p-white{background:var(--paper);transform:translate(7px,9px) rotate(.5deg);z-index:1;opacity:.95}
+.p-red{background:var(--accent);transform:translate(-9px,-7px);z-index:2}
+.p-ink{
+  background:linear-gradient(101deg,var(--ink-2) 0%,var(--ink) 52%,var(--ink-3) 100%);
+  z-index:3;
+}
+.p-ink::after{content:"";position:absolute;inset:0;border:2px solid rgba(255,255,255,.20)}
+.item.on .p-red{animation:jelly 2.6s ease-in-out infinite}
+.item.on .p-white{animation:jelly 3.6s ease-in-out infinite reverse}
+.item.on .p-ink{animation:jelly 4.8s ease-in-out infinite}
+@keyframes jelly{
+  0%,100%{clip-path:polygon(.8% 12%,97.5% 0%,100% 84%,3.2% 100%)}
+  25%{clip-path:polygon(1.7% 6%,99% 3%,98.6% 91%,2% 96%)}
+  50%{clip-path:polygon(.4% 16%,98.4% 1%,100% 80%,3.9% 100%)}
+  75%{clip-path:polygon(1.5% 9%,98% 4%,99.3% 90%,2.4% 97%)}
+}
+
+/* 选中项背后的红色尖刺星 */
+.star{
+  position:absolute;left:-30px;top:50%;width:clamp(122px,15.5vh,176px);
+  color:var(--accent);
+  transform:translate(-50%,-50%) scale(.28) rotate(-28deg);opacity:0;z-index:0;
+  transition:opacity .18s ease,transform .5s var(--pop);pointer-events:none;
+}
+.star svg{display:block;width:100%;height:auto;animation:spin 16s linear infinite;transform-origin:50% 50%;
+  filter:drop-shadow(3px 3px 0 rgba(255,255,255,.92))}
+.item.on .star{opacity:1;transform:translate(-50%,-50%) scale(1) rotate(0)}
+@keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}
+
+/* 序号 */
+.idx{
+  position:relative;z-index:4;flex:0 0 auto;
+  font-family:var(--font-disp);font-size:clamp(15px,1.95vh,20px);line-height:1;
+  padding:4px 8px 3px;background:var(--accent);color:#fff;
+  transform:skewX(10deg);box-shadow:3px 3px 0 rgba(0,0,0,.5);
+}
+.item.on .idx{background:#fff;color:var(--accent)}
+
+/* 图标 */
+.ic{
+  position:relative;z-index:4;flex:0 0 auto;
+  width:clamp(32px,3.9vh,40px);height:clamp(32px,3.9vh,40px);
+  display:grid;place-items:center;color:#fff;
+  background:rgba(255,255,255,.06);border:2px solid rgba(255,255,255,.45);
+  transform:skewX(var(--unskew));
+  transition:background .25s ease,color .25s ease,border-color .25s ease,transform .35s var(--pop);
+}
+.item.on .ic{background:var(--accent);border-color:#fff;color:#0a0a0e;transform:skewX(var(--unskew)) rotate(-6deg) scale(1.06)}
+.ic svg{width:64%;height:64%;display:block}
+
+/* 文案 */
+.txt{
+  position:relative;z-index:4;flex:1 1 auto;min-width:0;
+  display:flex;flex-direction:column;justify-content:center;
+  transform:skewX(var(--unskew));
+}
+.name{
+  font-family:"P5Heavy",var(--font-ui);
+  font-size:clamp(20px,2.95vh,31px);font-weight:900;line-height:1.08;letter-spacing:.02em;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  text-shadow:2px 2px 0 rgba(0,0,0,.55);
+}
+.desc{
+  font-size:clamp(11px,1.5vh,14px);font-weight:700;letter-spacing:.1em;color:#a9a9b6;
+  max-height:0;opacity:0;transform:translateX(-16px);overflow:hidden;
+  transition:max-height .3s var(--snap),opacity .25s ease,transform .35s var(--pop),color .25s;
+}
+.item.on .desc{max-height:26px;opacity:1;transform:none;color:var(--c2)}
+
+/* 右侧小标签（config.js 里的 tag 字段） */
+.tag{
+  position:relative;z-index:4;flex:0 0 auto;
+  font-family:var(--font-disp);font-size:clamp(9px,1.25vh,12px);letter-spacing:.14em;
+  padding:3px 7px 2px;color:#fff;background:rgba(255,255,255,.10);
+  border:1px solid rgba(255,255,255,.28);transform:skewX(var(--unskew));
+  transition:background .25s ease,color .25s ease,border-color .25s ease;
+}
+.item.on .tag{background:#fff;color:var(--accent);border-color:#fff}
+
+/* 尾部箭头 */
+.go{
+  position:relative;z-index:4;flex:0 0 auto;
+  font-size:clamp(13px,1.7vh,17px);color:#fff;opacity:.3;
+  transform:skewX(var(--unskew));transition:opacity .25s ease,color .25s ease;
+}
+.item.on .go{opacity:1;color:#fff;animation:bounceX 1.15s ease-in-out infinite}
+@keyframes bounceX{
+  0%,100%{transform:skewX(var(--unskew)) translateX(2px)}
+  50%{transform:skewX(var(--unskew)) translateX(10px)}
+}
+
+/* ============================ 转场擦除 ============================ */
+.wipe{position:fixed;inset:-14% -6%;z-index:90;display:flex;visibility:hidden;pointer-events:none}
+.wipe span{flex:1 1 0;background:var(--c1);transform:translateY(-135%) skewY(-7deg)}
+.wipe span:nth-child(even){background:var(--ink)}
+.wipe.play{visibility:visible}
+.wipe.play span{animation:wipeSweep .7s cubic-bezier(.72,0,.2,1) both}
+.wipe.play span:nth-child(1){animation-delay:0ms}
+.wipe.play span:nth-child(2){animation-delay:20ms}
+.wipe.play span:nth-child(3){animation-delay:40ms}
+.wipe.play span:nth-child(4){animation-delay:60ms}
+.wipe.play span:nth-child(5){animation-delay:80ms}
+.wipe.play span:nth-child(6){animation-delay:100ms}
+.wipe.play span:nth-child(7){animation-delay:120ms}
+@keyframes wipeSweep{
+  0%{transform:translateY(-135%) skewY(-7deg)}
+  35%{transform:translateY(0) skewY(-7deg)}
+  75%{transform:translateY(0) skewY(-7deg)}
+  100%{transform:translateY(135%) skewY(-7deg)}
+}
+
+/* ============================ 点击爆闪 ============================ */
+.splash{
+  position:fixed;left:0;top:0;width:0;height:0;z-index:95;pointer-events:none;
+}
+.splash i{
+  position:absolute;left:-170px;top:-170px;width:340px;height:340px;display:block;
+  background:var(--c1);opacity:0;
+  clip-path:polygon(50% 0%,58% 33%,86% 7%,72% 41%,100% 50%,70% 58%,93% 93%,58% 68%,50% 100%,42% 68%,7% 93%,28% 58%,0 50%,30% 42%,14% 7%,42% 33%);
+}
+.splash i.blow{animation:blow .56s cubic-bezier(.2,.9,.2,1) both}
+@keyframes blow{
+  0%{transform:scale(.15) rotate(0deg);opacity:.95}
+  100%{transform:scale(1.75) rotate(38deg);opacity:0}
+}
+
+/* ============================ 响应式 ============================ */
+@media (max-width:900px){
+  /* 顶栏改上下两行：标题占满整行，时钟单独一行靠右 */
+  .hud{flex-direction:column;align-items:stretch;gap:10px;padding:16px}
+  .hud-right{flex-direction:row;align-items:center;justify-content:flex-end;gap:10px;width:100%}
+  .brand h1{transform:skewX(-10deg)}
+  .stage{align-items:stretch;justify-content:center;padding:clamp(150px,26vh,220px) 16px 40px}
+  .menu-wrap{justify-content:stretch}
+  ul.menu{width:100%}
+  .item{width:100%;height:auto;min-height:66px;padding:12px 14px}
+  .item.on{width:100%;transform:translate3d(0,0,0) scale(1.02) skewX(var(--skew))}
+  .name{font-size:clamp(17px,2.35vh,21px);white-space:normal;line-height:1.15}
+  .desc{letter-spacing:.04em}
+  .star,.wm{display:none}
+  .hud{padding:16px}
+  h1{font-size:23px}
+  .clock-time{font-size:17px}
+}
+
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{
+    animation-duration:.001ms!important;animation-iteration-count:1!important;
+    transition-duration:.16s!important;
+  }
+  .wipe.play span{animation-duration:.001ms!important}
+}

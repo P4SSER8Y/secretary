@@ -62,6 +62,18 @@ Dev server proxies `/inbox/api`, `/meme/i`, `/album/api`, and `/recipe/api` to c
 
 GitHub Actions cross-compiles for `aarch64-unknown-linux-musl` and `x86_64-unknown-linux-musl`. The `develop` workflow runs on every push; `release` triggers on `v*` tags and creates GitHub releases. `VITE_HODOR_ENTRY` is a build-time secret for meme auth.
 
+### Nav page (`/`)
+
+`ui/public/index.html` + `ui/public/nav/`（纯静态 HTML/CSS/JS，无构建步骤）—— Vite 的 `copyPublicDir` 会把 public/ 原样拷到 dist 根，所以 dist/index.html 落到 `/`，被 Rocket 的 `FileServer`（`Options::Index`，rank 999）直接服务；`/nav/*` 同理。
+
+链接列表不进仓库，由服务端直接吐：
+
+- `server/src/nav.rs` 提供 `GET /nav/links.json`，读配置 `nav.links` 指定的文件；相对路径按 `data_path` 解析（`links = "nav/links.json"` + `data_path = "/data"` ⇒ `/data/nav/links.json`），文件不存在返回 404。
+- 页面启动时 `fetch('/nav/links.json', {cache:'no-store'})`，404 就退回 `/nav/links.example.json`（仓库内示例），不会白屏。
+- 部署：把 `links.json` 放到实例数据目录（如 `~/ws/data/<实例>/nav/links.json`），并在 `Local.toml` 里写 `[default.nav]` / `[release.nav]` 的 `links`（默认值见 `server/Rocket.toml`）。配置文件放 data 目录，`app/update.sh` 升级不会动它。
+- 字段：`title` / `subtitle` / `watermark` / `newTab` / `links[{name,url,desc,icon,tag,accent}]`；`icon` 支持 bowl|shield|server|globe|lock|film|note|star|spark|git|home，也可直接写 emoji。
+- ⚠️ 用 `app/update.sh` 拉 release 包升级会把 `app/secretary` 换成**官方二进制**（不含本仓库的 `nav` 路由），`/nav/links.json` 会重新 404 → 页面退回示例配置。要恢复得用本仓库重新编译并覆盖二进制。
+
 ### Packaging
 
 `make package` bundles `Rocket.toml`, the UI `dist/`, and the server binary into a tarball. Optional signing via `rsign2`.

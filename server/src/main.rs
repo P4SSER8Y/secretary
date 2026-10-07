@@ -18,6 +18,7 @@ mod fairings;
 mod kindle;
 mod let_server_run;
 mod logger;
+mod nav;
 mod qweather;
 mod tsdb;
 
@@ -179,6 +180,9 @@ async fn go(config: &Figment) -> Result<(), rocket::Error> {
     if is_enabled(&config, "gate", false) {
         wtf = gate::build("/gate/api/", wtf, &config).await.unwrap();
     }
+    // 导航页的链接配置：GET /nav/links.json，文件路径见配置 nav.links
+    wtf = nav::build(wtf, &config);
+
     if let Ok(ui) = config.find_value("ui_path") {
         if let Some(ui) = ui.as_str() {
             use rocket::fs::{FileServer, Options};
