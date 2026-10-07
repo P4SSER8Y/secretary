@@ -7,7 +7,10 @@
 <meta name="color-scheme" content="dark">
 <title>NAVI</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23000'/%3E%3Cpath d='M16 3l3.1 8.2H28l-7.2 5.2 2.7 8.6L16 20l-7.5 5 2.7-8.6L4 11.2h8.9z' fill='%23e60012'/%3E%3C/svg%3E">
-<link rel="stylesheet" href="/nav/p5.css">
+<!-- 导航页入口：这是 Vite 的项目根 html，构建后即 dist/index.html，
+     由挂在 "/" 的 Rocket FileServer(Options::Index) 服务。
+     样式（nav/p5.css）和示例配置都在 nav/app.js 里 import，走 Vite 打包压缩。 -->
+<script type="module" src="/nav/app.js"></script>
 </head>
 <body>
 
@@ -57,6 +60,5 @@
 <!-- 点击时的爆闪 -->
 <div class="splash" id="splash" aria-hidden="true"><i></i></div>
 
-<script src="/nav/app.js"></script>
 </body>
 </html>

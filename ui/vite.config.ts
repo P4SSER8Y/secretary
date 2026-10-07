@@ -11,8 +11,14 @@ export default defineConfig(({ mode }) => {
             outDir: 'dist',
             emptyOutDir: true,
             copyPublicDir: true,
+            // 生产构建的压缩/混淆（esbuild 会压掉空白与局部变量名）+ CSS 压缩 +
+            // 文件名内容哈希（assets/xxx-<hash>.js 可长缓存）。其余入口同样受益。
+            minify: 'esbuild',
+            cssMinify: true,
             rollupOptions: {
                 input: {
+                    // 导航页：项目根 html → dist/index.html，服务在 "/"（P5 风格首页）
+                    index: resolve(__dirname, 'index.html'),
                     album: resolve(__dirname, 'album/index.html'),
                     inbox: resolve(__dirname, 'inbox/index.html'),
                     kindle: resolve(__dirname, 'kindle/debug/index.html'),

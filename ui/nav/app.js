@@ -1,15 +1,21 @@
 /* ==========================================================================
- * PHANTOM NAVI — 导航页（secretary 静态页，挂在 / 路径）
+ * PHANTOM NAVI — 导航页（secretary 首页，挂在 / 路径）
  *
- * 配置是动态的：启动时拉 /nav/links.json（不在仓库里，跟部署走）；
- * 拉不到就退回 /nav/links.example.json（仓库内示例），页面不会白屏。
- * 字段说明见 ui/public/nav/links.example.json。
+ * 这个文件是 Vite 的入口（对应的 html 是 ui/index.html → dist/index.html）：
+ * 样式、示例配置都在这里 import，构建时由 Vite 打包 + esbuild 压缩 + 内容哈希。
+ *
+ * 配置是动态的：启动时拉 /nav/links.json（不在仓库里，跟部署走 —— 由服务端
+ * nav.links 配置指向，默认 data_path 下的 nav/links.json）；拉不到就用编译进来的
+ * 示例配置（nav/links.example.json），页面不会白屏。
  * ========================================================================== */
+import './p5.css';
+import LINKS_EXAMPLE from './links.example.json';
+
 (function () {
   'use strict';
 
   var CONFIG_URL = '/nav/links.json';
-  var FALLBACK_URL = '/nav/links.example.json';
+  var FALLBACK = LINKS_EXAMPLE;
   var DEFAULTS = {
     title: 'NAVI',
     subtitle: '',
@@ -98,7 +104,7 @@
     if (!items.length) {
       var hint = document.createElement('li');
       hint.className = 'row';
-      hint.innerHTML = '<div class="empty">没有导航项 —— 部署时提供 /nav/links.json（可参考 /nav/links.example.json）</div>';
+      hint.innerHTML = '<div class="empty">没有导航项 —— 部署时提供 /nav/links.json（服务端配置 nav.links 指向，默认 data_path/nav/links.json）</div>';
       menuEl.appendChild(hint);
     }
 
@@ -240,11 +246,8 @@
   }
 
   fetchJson(CONFIG_URL)['catch'](function (e) {
-    console.warn('[nav] ' + e.message + '，改用示例配置');
-    return fetchJson(FALLBACK_URL);
-  })['catch'](function (e) {
-    console.warn('[nav] 示例配置也没拿到：' + e.message);
-    return DEFAULTS;
+    console.warn('[nav] ' + e.message + '，改用编译进来的示例配置');
+    return FALLBACK;
   }).then(main)['catch'](function (e) {
     console.error('[nav] 初始化失败', e);
   });
