@@ -42,32 +42,22 @@ import LINKS_EXAMPLE from './links.example.json';
   }
 
   /* ----------------------------------------------------------- 图标
-     Material Symbols（自托管 outlined）。JSON 里的 icon 写 Material 的图标名，名字作为元素文本
-     交给连字渲染（所以任意名字都能用、不用改代码）：
-     - 下划线/短横线都行：hard_drive / hard-drive 等价
-     - 老配置的短名见 ICON_ALIAS，映射到最接近的 Material 图标
-     - Material 里没有的名字 → 图标位留空（下面的 checkIcons 会量宽度，把没渲染成字的藏掉 + 提示）
+     Material Symbols（自托管 outlined）。icon 直接写**图标集自己的名字**，不做任何改写/映射：
+     名字就是元素里的文本，交给字体的连字渲染 —— 写什么就是什么，加图标也不用改代码。
+     - 用 Material 原生的下划线写法：hard_drive / network_check / account_tree / photo_camera …
+       完整清单：https://fonts.google.com/icons（搜索框里可以搜中文）
+     - 名字不对（或差一个字母）时连字不命中：下面的 checkIcons 会把那个位置留空 + 控制台提示，
+       不会画成一串字母
      - 非 ASCII 字符串（如 "📶"）原样当 emoji 画
      ⚠️ Material Symbols 没有品牌 logo（docker/github 这类），要品牌图标得另加一套（如 Simple Icons）。 */
-  var ICON_ALIAS = {
-    bowl: 'restaurant', shield: 'shield', server: 'dns', globe: 'public',
-    lock: 'lock', film: 'movie', note: 'description', star: 'star',
-    spark: 'bolt', git: 'account_tree', home: 'home', wifi: 'wifi',
-    cloud: 'cloud', disk: 'storage', nas: 'storage', camera: 'photo_camera',
-    cube: 'deployed_code', container: 'deployed_code',
-    ladder: 'stairs', proxy: 'route'
-  };
   var warnedIcon = 0;
-  function iconName(icon) {
-    if (ICON_ALIAS[icon]) return ICON_ALIAS[icon];
-    if (/^[a-z0-9_-]{2,40}$/i.test(icon)) return icon.toLowerCase().replace(/-/g, '_');
-    return null;                       /* 非 ASCII（emoji 等）：当文字画 */
-  }
   function iconMarkup(icon) {
     if (!icon || typeof icon !== 'string') return '';
-    var name = iconName(icon);
-    if (!name) return '<span style="font-size:.92em;line-height:1">' + icon + '</span>';
-    return '<span class="material-symbols-outlined" aria-hidden="true">' + name + '</span>';
+    if (/^[\x21-\x7e]{1,40}$/.test(icon)) {
+      /* ASCII：原样交给字体按连字名渲染（成不成由字体决定，写错的会被 checkIcons 藏掉） */
+      return '<span class="material-symbols-outlined" aria-hidden="true">' + icon + '</span>';
+    }
+    return '<span style="font-size:.92em;line-height:1">' + icon + '</span>';   /* emoji / 汉字原样 */
   }
   function iconsReady() {
     return !!(document.fonts && document.fonts.check &&
@@ -86,8 +76,8 @@ import LINKS_EXAMPLE from './links.example.json';
       if (el.offsetWidth > fs * 1.5) {
         el.style.visibility = 'hidden';
         if (warnedIcon++ < 3) {
-          console.warn('[nav] 图标名 "' + el.textContent + '" 不在 Material Symbols 里，这个位置已留空。' +
-            '内置短名：' + Object.keys(ICON_ALIAS).join('|'));
+          console.warn('[nav] 图标名 "' + el.textContent + '" 不是 Material Symbols 的名字，这个位置已留空。' +
+            '请用图标集的原名（下划线写法，如 hard_drive / network_check / account_tree），清单见 fonts.google.com/icons');
         }
       }
     }
