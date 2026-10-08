@@ -23,7 +23,7 @@ import LINKS_EXAMPLE from './links.example.json';
     title: 'NAVI',
     subtitle: '',
     watermark: 'Take Your Heart',
-    newTab: true,
+    newTab: false,    /* false = 同标签页打开（先播擦除再跳）；true = 交给浏览器开新标签 */
     theme: 'p5',      /* 主菜单主题 */
     subTheme: '',     /* 二级及以下主题；留空 = 跟 theme 同款 */
     links: []

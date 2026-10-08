@@ -5,7 +5,7 @@
   "title": "NAVI",
   "subtitle": "Take Your Heart",
   "watermark": "Take Your Heart",
-  "newTab": true,
+  "newTab": false,
   "theme": "p5",
   "subTheme": "p3",
   "links": [

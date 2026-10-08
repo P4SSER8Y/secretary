@@ -367,7 +367,9 @@ ul.menu.sub::before{
 .item.kid .name{font-size:clamp(17px,2.5vh,26px)}
 
 /* ============================ 转场擦除 ============================ */
-.wipe{position:fixed;inset:-14% -6%;z-index:90;display:flex;visibility:hidden;pointer-events:none}
+/* 转场擦除：容器要往外扩得够狠 —— skewY 会把条子的上下边平移 |x|*tan(7°)，
+   右上角会漏出缝；纵向用 vw 扩（跟横向位移同比例）才能全比例覆盖 */
+.wipe{position:fixed;inset:-30vw -6%;z-index:90;display:flex;visibility:hidden;pointer-events:none}
 .wipe span{flex:1 1 0;background:var(--c1);transform:translateY(-135%) skewY(-7deg)}
 .wipe span:nth-child(even){background:var(--ink)}
 .wipe.play{visibility:visible}
@@ -492,8 +494,10 @@ html[data-theme="p3"] .star{width:clamp(84px,9.6vh,108px)}
 html[data-theme="p3"] .item.on .p-ink{background:linear-gradient(101deg,#123a86 0%,#0a1f4d 56%,#08163a 100%)}
 html[data-theme="p3"] .name{font-family:var(--font-disp);font-weight:400;letter-spacing:.02em}
 
-/* 切主题时的斜条擦除（元素由 JS 建，按目标主题上色） */
-.flash{position:fixed;inset:-12% -8%;z-index:88;display:flex;visibility:hidden;pointer-events:none}
+/* 切主题时的斜条擦除（元素由 JS 建，按目标主题上色）。
+   容器必须往外扩够：斜条 skewX(-20deg) 会把上下边各平移 (H/2)*tan20°，
+   容器只按百分比扩的话，左上角/右下角会漏一条缝 —— 横向用 vh 扩，跟纵向位移同比例。 */
+.flash{position:fixed;inset:-40% -60vh;z-index:88;display:flex;visibility:hidden;pointer-events:none}
 .flash span{flex:1 1 0;background:var(--flash-c,#e60012);transform:translateX(-650%) skewX(-20deg)}
 .flash span:nth-child(even){background:var(--flash-ink,#0a0a0e)}
 .flash.play{visibility:visible}
