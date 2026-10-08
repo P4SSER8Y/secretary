@@ -59,60 +59,103 @@ import LINKS_EXAMPLE from './links.example.json';
     return '<span style="font-size:.92em;line-height:1">' + icon + '</span>';
   }
 
+  /* 分组：带非空 items 的条目就是二级菜单的入口；叶子是普通链接。
+     两种可以混着放，顺序照配置来。 */
+  function isGroup(l) { return !!(l && l.items && l.items.length); }
+  function usable(l) { return !!l && (!!l.url || isGroup(l)); }
+
   /* ----------------------------------------------------------- 主流程 */
   function main(raw) {
     var CFG = Object.assign({}, DEFAULTS, raw || {});
-    var links = (CFG.links || []).filter(function (l) { return l && l.url; });
+    var links = (CFG.links || []).filter(usable);
 
     var menuEl = document.getElementById('menu');
-    var items = [];
+    var crumbEl = document.getElementById('crumb');
+    var crumbTitleEl = document.getElementById('crumbTitle');
+    var crumbPathEl = document.getElementById('crumbPath');
+    var backBtn = document.getElementById('crumbBack');
 
-    links.forEach(function (link, i) {
-      var li = document.createElement('li');
-      li.className = 'row';
+    /* 层级栈：depth = 0 是主菜单；进二级就把子项数组压栈，返回时弹栈。
+       用栈而不是写死两层，所以想套三层也能直接用。 */
+    var stack = [links];   /* 每一层的条目数组 */
+    var titles = [];       /* 每一层的分组名（面包屑用） */
+    var origins = [];      /* 从哪个父项进来的（返回时恢复选中） */
+    var depth = 0;
+    var rows = [];         /* 当前层的 DOM（行） */
+    var pos = -1;          /* 当前选中项下标 */
+    var busy = false;      /* 进/出层的动画期间锁住输入 */
 
-      var a = document.createElement('a');
-      a.className = 'item';
-      a.href = link.url;
-      if (CFG.newTab !== false) { a.target = '_blank'; a.rel = 'noopener noreferrer'; }
-      if (link.accent) a.style.setProperty('--accent', link.accent);
-      a.setAttribute('aria-label', (link.name || '') + (link.desc ? ' — ' + link.desc : ''));
+    function pad2(n) { return String(n).padStart(2, '0'); }
 
-      a.innerHTML =
-        '<span class="star" aria-hidden="true">' + STAR_SVG + '</span>' +
-        '<span class="poly p-white"></span>' +
-        '<span class="poly p-red"></span>' +
-        '<span class="poly p-ink"></span>' +
-        '<span class="idx">' + String(i + 1).padStart(2, '0') + '</span>' +
-        '<span class="ic">' + iconMarkup(link.icon) + '</span>' +
-        '<span class="txt">' +
-          '<span class="name">' + (link.name || '') + '</span>' +
-          '<span class="desc">' + (link.desc || link.tag || '') + '</span>' +
-        '</span>' +
-        ((link.tag) ? '<span class="tag">' + link.tag + '</span>' : '') +
-        '<span class="go" aria-hidden="true">▶</span>';
+    function buildRows(list, level) {
+      var frag = document.createDocumentFragment();
+      rows = [];
+      list.forEach(function (link, i) {
+        var grp = isGroup(link);
+        var kids = grp ? link.items.filter(usable) : [];
+        var li = document.createElement('li');
+        li.className = 'row';
 
-      a.addEventListener('mouseenter', function () { select(i); });
-      a.addEventListener('focus', function () { select(i); });
-      a.addEventListener('click', function (ev) { launch(i, ev); });
+        var a = document.createElement('a');
+        a.className = 'item' + (grp ? ' grp' : '') + (level > 0 ? ' kid' : '');
+        if (grp) {
+          /* 分组不是链接：右键新标签页打开这种操作对它没意义 */
+          a.setAttribute('role', 'button');
+          a.setAttribute('aria-haspopup', 'true');
+          a.setAttribute('tabindex', '0');
+        } else {
+          a.href = link.url;
+          if (CFG.newTab !== false) { a.target = '_blank'; a.rel = 'noopener noreferrer'; }
+        }
+        if (link.accent) a.style.setProperty('--accent', link.accent);
+        a.setAttribute('aria-label', (link.name || '') + (link.desc ? ' — ' + link.desc : '') + (grp ? '（子菜单）' : ''));
 
-      li.appendChild(a);
-      menuEl.appendChild(li);
-      items.push(a);
-    });
+        a.innerHTML =
+          '<span class="star" aria-hidden="true">' + STAR_SVG + '</span>' +
+          '<span class="poly p-white"></span>' +
+          '<span class="poly p-red"></span>' +
+          '<span class="poly p-ink"></span>' +
+          '<span class="idx">' + pad2(i + 1) + '</span>' +
+          '<span class="ic">' + iconMarkup(link.icon) + '</span>' +
+          '<span class="txt">' +
+            '<span class="name">' + (link.name || '') + '</span>' +
+            '<span class="desc">' + (link.desc || link.tag || '') + '</span>' +
+          '</span>' +
+          ((link.tag) ? '<span class="tag">' + link.tag + '</span>' : '') +
+          (grp ? '<span class="cnt">' + pad2(kids.length) + '</span>' : '') +
+          '<span class="go" aria-hidden="true">' + (grp ? '»' : '▶') + '</span>';
 
-    if (!items.length) {
-      var hint = document.createElement('li');
-      hint.className = 'row';
-      hint.innerHTML = '<div class="empty">没有导航项 —— 部署时提供 /nav/links.json（服务端配置 nav.links 指向，默认 data_path/nav/links.json）</div>';
-      menuEl.appendChild(hint);
+        a.addEventListener('mouseenter', function () { select(i); });
+        a.addEventListener('focus', function () { select(i); });
+        a.addEventListener('click', function (ev) {
+          if (grp) { ev.preventDefault(); enter(i); return; }
+          launch(link, ev);
+        });
+
+        li.appendChild(a);
+        frag.appendChild(li);
+        rows.push(a);
+      });
+
+      menuEl.innerHTML = '';
+      menuEl.classList.toggle('sub', level > 0);
+      menuEl.appendChild(frag);
+
+      if (!rows.length) {
+        var hint = document.createElement('li');
+        hint.className = 'row';
+        hint.innerHTML = '<div class="empty">' + (level > 0
+          ? '这个分组里没有条目'
+          : '没有导航项 —— 部署时提供 /nav/links.json（服务端配置 nav.links 指向，默认 data_path/nav/links.json）') + '</div>';
+        menuEl.appendChild(hint);
+      }
+      pos = -1;
     }
 
-    var current = -1;
     function select(i) {
-      if (i < 0 || i >= items.length || i === current) return;
-      current = i;
-      items.forEach(function (el, k) {
+      if (i < 0 || i >= rows.length || i === pos) return;
+      pos = i;
+      rows.forEach(function (el, k) {
         el.classList.toggle('on', k === i);
         if (k === i) {
           el.classList.remove('wob');
@@ -121,6 +164,78 @@ import LINKS_EXAMPLE from './links.example.json';
         }
       });
     }
+
+    /* 出层：行错峰向左飘走（.out），返回「全部飘完约需多久」 */
+    function staggerOut(list, step) {
+      list.forEach(function (el, k) {
+        setTimeout(function () {
+          el.classList.remove('on', 'wob', 'in');
+          el.classList.add('out');
+        }, k * step);
+      });
+      return 150 + list.length * step;
+    }
+    function staggerIn(list, step, base) {
+      list.forEach(function (el, k) {
+        setTimeout(function () { el.classList.add('in'); }, base + k * step);
+      });
+    }
+
+    /* 面包屑：depth = 0 时收起来 */
+    function setCrumb() {
+      if (depth === 0) { crumbEl.classList.remove('on'); return; }
+      crumbTitleEl.textContent = titles[titles.length - 1] || '';
+      crumbPathEl.textContent = String(CFG.title || DEFAULTS.title) +
+        ' / ' + titles.join(' / ') + ' · ' + pad2(rows.length);
+      crumbEl.classList.add('on');
+    }
+
+    /* 进二级：父项让位 → 子项从右侧滑入，首项自动选中 */
+    function enter(i) {
+      if (busy || depth !== stack.length - 1) return;
+      var g = stack[depth][i];
+      if (!isGroup(g)) return;
+      var kids = g.items.filter(usable);
+      if (!kids.length) return;
+      busy = true;
+      var wait = staggerOut(rows, 26);
+      setTimeout(function () {
+        origins.push(i);
+        titles.push(g.name || '');
+        stack.push(kids);
+        depth += 1;
+        buildRows(kids, depth);
+        setCrumb();
+        staggerIn(rows, 68, 40);
+        setTimeout(function () {
+          select(0);
+          busy = false;
+        }, 40 + rows.length * 68 + 90);
+      }, wait);
+    }
+
+    /* 返回上一层：恢复进层前选中的那个父项 */
+    function back() {
+      if (busy || depth === 0) return;
+      busy = true;
+      var from = origins[origins.length - 1];
+      var wait = staggerOut(rows, 22);
+      setTimeout(function () {
+        origins.pop();
+        titles.pop();
+        stack.pop();
+        depth -= 1;
+        buildRows(stack[depth], depth);
+        setCrumb();
+        staggerIn(rows, 68, 30);
+        setTimeout(function () {
+          select((from >= 0 && from < rows.length) ? from : 0);
+          busy = false;
+        }, 30 + rows.length * 68 + 90);
+      }, wait);
+    }
+
+    if (backBtn) backBtn.addEventListener('click', back);
 
     /* --------------------------------------------------------- 擦除 / 爆闪 */
     var wipeEl = document.getElementById('wipe');
@@ -139,8 +254,7 @@ import LINKS_EXAMPLE from './links.example.json';
       splashChild.classList.add('blow');
     }
 
-    function launch(i, ev) {
-      var link = links[i];
+    function launch(link, ev) {
       if (!link) return;
       var x = (ev && ev.clientX) || window.innerWidth * 0.5;
       var y = (ev && ev.clientY) || window.innerHeight * 0.5;
@@ -155,19 +269,36 @@ import LINKS_EXAMPLE from './links.example.json';
       setTimeout(function () { window.location.href = link.url; }, 430);
     }
 
-    /* --------------------------------------------------------- 键盘 */
+    /* --------------------------------------------------------- 键盘
+       ↑↓/jk 选行；Enter / → 进分组（→ 在普通行上仍是「下一行」）；
+       Esc / Backspace / ← 退回上一层（← 在主菜单里仍是「上一行」）。 */
     document.addEventListener('keydown', function (ev) {
-      if (ev.metaKey || ev.ctrlKey || ev.altKey || !items.length) return;
+      if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
       var k = ev.key;
-      if (k === 'ArrowDown' || k === 'ArrowRight' || k === 'j') {
-        ev.preventDefault(); select((current + 1) % items.length);
-      } else if (k === 'ArrowUp' || k === 'ArrowLeft' || k === 'k') {
-        ev.preventDefault(); select((current - 1 + items.length) % items.length);
+
+      if (k === 'Escape' || k === 'Backspace') {
+        if (depth > 0) { ev.preventDefault(); back(); }
+        return;
+      }
+      if (!rows.length) return;
+
+      if (k === 'ArrowDown' || k === 'j') {
+        ev.preventDefault(); select((pos + 1) % rows.length);
+      } else if (k === 'ArrowUp' || k === 'k') {
+        ev.preventDefault(); select((pos - 1 + rows.length) % rows.length);
+      } else if (k === 'ArrowRight') {
+        ev.preventDefault();
+        if (pos >= 0 && isGroup(stack[depth][pos])) enter(pos);
+        else select((pos + 1) % rows.length);
+      } else if (k === 'ArrowLeft') {
+        ev.preventDefault();
+        if (depth > 0) back();
+        else select((pos - 1 + rows.length) % rows.length);
       } else if (k === 'Enter' || k === ' ') {
-        if (current >= 0) { ev.preventDefault(); items[current].click(); }
+        if (pos >= 0) { ev.preventDefault(); rows[pos].click(); }
       } else if (/^[1-9]$/.test(k)) {
         var idx = parseInt(k, 10) - 1;
-        if (idx < items.length) { ev.preventDefault(); select(idx); items[idx].click(); }
+        if (idx < rows.length) { ev.preventDefault(); select(idx); rows[idx].click(); }
       }
     });
 
@@ -238,11 +369,10 @@ import LINKS_EXAMPLE from './links.example.json';
     }
 
     /* --------------------------------------------------------- 开场 */
+    buildRows(links, 0);
     playWipe();
-    items.forEach(function (el, i) {
-      setTimeout(function () { el.classList.add('in'); }, 520 + i * 95);
-    });
-    setTimeout(function () { select(0); }, 560 + items.length * 95);
+    staggerIn(rows, 95, 520);
+    setTimeout(function () { select(0); }, 560 + rows.length * 95);
   }
 
   fetchJson(CONFIG_URL)['catch'](function (e) {

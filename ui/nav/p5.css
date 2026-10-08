@@ -292,6 +292,79 @@ ul.menu{list-style:none;width:min(620px,100%);display:flex;flex-direction:column
   50%{transform:skewX(var(--unskew)) translateX(10px)}
 }
 
+/* ============================ 二级菜单 ============================ */
+/* 有了面包屑，菜单列改纵向：面包屑在上、列表在下，都靠右 */
+.menu-wrap{flex-direction:column;align-items:flex-end;gap:clamp(10px,1.6vh,16px)}
+
+/* 换层时旧行向左飘走（必须写在 .item.in 之后，否则盖不住入场态） */
+.item.out{
+  opacity:0;transform:translate3d(-104px,0,0) skewX(-30deg);
+  transition:transform .22s var(--snap),opacity .18s ease;
+}
+
+/* 面包屑：进了二级才露出来（用 visibility 是为了让过渡能播） */
+.crumb{
+  display:flex;align-items:center;gap:clamp(10px,1.4vw,18px);
+  width:min(620px,100%);
+  visibility:hidden;opacity:0;transform:translateX(-26px) skewX(var(--skew));
+  transition:opacity .3s ease,transform .42s var(--pop),visibility 0s linear .3s;
+}
+.crumb.on{visibility:visible;opacity:1;transform:skewX(var(--skew));transition-delay:0s}
+.crumb .back{
+  display:inline-flex;align-items:center;gap:7px;flex:0 0 auto;
+  font-family:var(--font-disp);font-size:clamp(10px,1.4vh,13px);letter-spacing:.14em;
+  padding:7px 12px 6px;color:#fff;background:var(--c1);
+  border:2px solid #fff;box-shadow:4px 4px 0 rgba(0,0,0,.5);
+  cursor:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='34' height='34' viewBox='0 0 34 34'%3E%3Cpath d='M7 3l21 11-8.6 2 4.4 9.6-4 1.8-4.4-9.6-5.4 5.6z' fill='%23e60012' stroke='%23fff' stroke-width='2'/%3E%3C/svg%3E") 7 3,pointer;
+  transform:skewX(var(--unskew));
+  transition:background .2s ease,color .2s ease,transform .28s var(--pop);
+}
+.crumb .back:hover,.crumb .back:focus-visible{background:#fff;color:var(--c1);transform:skewX(var(--unskew)) translateX(-5px)}
+.crumb-txt{display:flex;flex-direction:column;gap:4px;min-width:0}
+.crumb-path{
+  font-family:var(--font-disp);font-size:clamp(9px,1.15vh,11px);letter-spacing:.2em;color:#9a9aa8;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.crumb-title{
+  font-family:var(--font-disp);font-size:clamp(14px,2vh,20px);line-height:1;letter-spacing:.05em;
+  color:#fff;text-shadow:2px 2px 0 rgba(0,0,0,.55);
+}
+
+/* 分组行：cnt 里的数字是子项个数，尾部箭头换成 » */
+.cnt{
+  position:relative;z-index:4;flex:0 0 auto;
+  font-family:var(--font-disp);font-size:clamp(10px,1.3vh,12px);letter-spacing:.08em;
+  padding:3px 7px 2px;background:var(--c1);color:#fff;
+  border:1px solid rgba(255,255,255,.85);transform:skewX(var(--unskew));
+  transition:background .25s ease,color .25s ease,border-color .25s ease;
+}
+.item.on .cnt{background:#fff;color:var(--c1);border-color:#fff}
+
+/* 子项：整体缩进一档，左侧一根红轨表示「都属于上面那个分组」 */
+ul.menu.sub{position:relative}
+ul.menu.sub::before{
+  content:"";position:absolute;left:86px;top:2px;bottom:2px;width:6px;
+  background:linear-gradient(to bottom,var(--c1) 0%,var(--c1) 66%,rgba(var(--c1-rgb),0) 100%);
+  opacity:.9;transform-origin:50% 0;
+  transform:skewX(-6deg);animation:railIn .5s var(--snap) both;
+}
+@keyframes railIn{
+  from{transform:skewX(-6deg) scaleY(0)}
+  to{transform:skewX(-6deg) scaleY(1)}
+}
+.item.kid{width:calc(100% - 96px);height:clamp(52px,7.6vh,74px)}
+/* 子项选中只轻微左移（别贴到红轨上），抖动帧也跟着重写一遍 */
+.item.kid.on{width:calc(100% - 96px);transform:translate3d(-4px,0,0) scale(1.015) skewX(var(--skew))}
+@keyframes kidPop{
+  0%{transform:translate3d(-4px,0,0) scale(1.015) skewX(var(--skew))}
+  30%{transform:translate3d(-12px,0,0) scale(1.05) rotate(-1.1deg) skewX(var(--skew))}
+  62%{transform:translate3d(-1px,0,0) scale(.99) rotate(.55deg) skewX(var(--skew))}
+  100%{transform:translate3d(-4px,0,0) scale(1.015) skewX(var(--skew))}
+}
+.item.kid.on.wob{animation:kidPop .58s var(--pop) 1}
+.item.kid .idx{font-size:clamp(13px,1.75vh,18px)}
+.item.kid .name{font-size:clamp(17px,2.5vh,26px)}
+
 /* ============================ 转场擦除 ============================ */
 .wipe{position:fixed;inset:-14% -6%;z-index:90;display:flex;visibility:hidden;pointer-events:none}
 .wipe span{flex:1 1 0;background:var(--c1);transform:translateY(-135%) skewY(-7deg)}
@@ -334,13 +407,21 @@ ul.menu{list-style:none;width:min(620px,100%);display:flex;flex-direction:column
   .hud-right{flex-direction:row;align-items:center;justify-content:flex-end;gap:10px;width:100%}
   .brand h1{transform:skewX(-10deg)}
   .stage{align-items:stretch;justify-content:center;padding:clamp(150px,26vh,220px) 16px 40px}
-  .menu-wrap{justify-content:stretch}
+  .menu-wrap{align-items:stretch}
   ul.menu{width:100%}
   .item{width:100%;height:auto;min-height:66px;padding:12px 14px}
   .item.on{width:100%;transform:translate3d(0,0,0) scale(1.02) skewX(var(--skew))}
   .name{font-size:clamp(17px,2.35vh,21px);white-space:normal;line-height:1.15}
   .desc{letter-spacing:.04em}
   .star,.wm{display:none}
+  /* 二级菜单：手机上没有桌面那 54px 留白，缩进和红轨都要收窄 */
+  .crumb{width:100%}
+  .crumb .back{padding:6px 10px 5px}
+  .crumb-title{font-size:15px}
+  .item.kid,.item.kid.on{width:calc(100% - 34px)}
+  .item.kid.on{transform:translate3d(-4px,0,0) scale(1.02) skewX(var(--skew))}
+  ul.menu.sub::before{left:22px;width:5px}
+  .item.kid .name{font-size:clamp(15px,2.2vh,19px)}
   .hud{padding:16px}
   h1{font-size:23px}
   .clock-time{font-size:17px}

@@ -1,5 +1,6 @@
 {
   "_readme": "示例配置（构建时被 nav/app.js import 打包进去，作为 /nav/links.json 取不到时的兜底）。真正生效的是服务端配置 nav.links 指向的那个文件，默认 data_path 下的 nav/links.json，例如 ~/ws/data/<实例>/nav/links.json —— 它不在仓库里。",
+  "_二级菜单": "条目里带非空 items 就是二级菜单的入口（点它进子层，子层可再套 items 做三级）；只有 url 的就是普通链接。两者可以混着放，顺序按数组来。分组可以不给 url。",
   "title": "NAVI",
   "subtitle": "Take Your Heart",
   "watermark": "Take Your Heart",
@@ -14,11 +15,26 @@
     },
     {
       "name": "内网服务",
-      "url": "http://192.168.1.2/",
-      "desc": "desc 只在选中时滑出来",
+      "desc": "分组示例：进去看二级菜单",
       "icon": "server",
       "tag": "LAN",
-      "accent": "#2bd0f5"
+      "accent": "#2bd0f5",
+      "items": [
+        {
+          "name": "子项甲",
+          "url": "http://192.168.1.2/",
+          "desc": "desc 只在选中时滑出来",
+          "icon": "shield",
+          "tag": "DNS"
+        },
+        {
+          "name": "子项乙",
+          "url": "http://192.168.1.3/",
+          "desc": "子项缩进一档，左边有红轨",
+          "icon": "server",
+          "tag": "LAN"
+        }
+      ]
     }
   ]
 }

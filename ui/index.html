@@ -50,9 +50,17 @@
   </div>
 </header>
 
-<!-- 菜单：内容来自 /nav/links.json（部署时提供，不在仓库里） -->
+<!-- 菜单：内容来自 /nav/links.json（部署时提供，不在仓库里）。
+     进了二级菜单才显示上面的面包屑（分组名 + 返回），主菜单层级它收起来。 -->
 <main class="stage">
   <nav class="menu-wrap" aria-label="导航菜单">
+    <div class="crumb" id="crumb">
+      <button class="back" id="crumbBack" type="button" aria-label="返回主菜单">◀ 返回</button>
+      <span class="crumb-txt">
+        <span class="crumb-path" id="crumbPath"></span>
+        <span class="crumb-title" id="crumbTitle"></span>
+      </span>
+    </div>
     <ul class="menu" id="menu"></ul>
   </nav>
 </main>
