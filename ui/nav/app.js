@@ -11,11 +11,11 @@
  * 条目两种形态：带非空 items 的 = 分组（二级菜单入口），只有 url 的 = 普通链接。
  * 层级用栈实现，所以 items 里再套 items 就是三级。
  * ========================================================================== */
-/* 图标用**自托管**的 Font Awesome Free（webfont）：JSON 里直接写 FA 的名字即可，不依赖 CDN，
-   内网/离线也能显示。FA 的 CSS 先引，p5.css 后引 —— 这样 p5.css 才能盖住它的默认尺寸。 */
-import '@fortawesome/fontawesome-free/css/fontawesome.css';
-import '@fortawesome/fontawesome-free/css/solid.css';
-import '@fortawesome/fontawesome-free/css/brands.css';
+/* 图标用**自托管**的 Material Symbols（outlined 可变字体，连字名版）：JSON 里直接写图标名
+   （wifi / hard_drive / router / network_wired …），名字就是元素里的文本 → 任意名字都能用、
+   加图标不用重新构建。不依赖 CDN，内网/离线同样显示。
+   ⚠️ 完整字体 ≈3.9MB（一次下载、之后内容哈希长缓存）；嫌重可以再子集化（代价：加图标要重构建）。 */
+import 'material-symbols/outlined.css';
 import './p5.css';
 import LINKS_EXAMPLE from './links.example.json';
 
@@ -42,45 +42,55 @@ import LINKS_EXAMPLE from './links.example.json';
   }
 
   /* ----------------------------------------------------------- 图标
-     Font Awesome Free（自托管 webfont）。JSON 里的 icon 直接写 FA 的名字：
-     - fa-solid 那套：wifi / server / hard-drive / network-wired / camera / cube / …
-     - 品牌图标：docker / github / cloudflare / linux / … （自动走 fa-brands），也可写 "brands:xxx"
-     - 内置短名（老配置沿用的那批）见 ICON_ALIAS，映射到含义最接近的 FA 图标
-     - 都不是的字符串，原样当 emoji 画（如 "📶"）
-     加图标不用改代码 —— 只要名字在 FA Free 里有。 */
-  var BRANDS = {};
-  ('docker github gitlab cloudflare linux apple ubuntu android js python node raspberry-pi ' +
-   'windows microsoft google aws telegram discord youtube spotify').split(' ')
-    .forEach(function (b) { BRANDS[b] = 1; });
-  /* 旧配置的短名 → FA 名（保持兼容，别删） */
+     Material Symbols（自托管 outlined）。JSON 里的 icon 写 Material 的图标名，名字作为元素文本
+     交给连字渲染（所以任意名字都能用、不用改代码）：
+     - 下划线/短横线都行：hard_drive / hard-drive 等价
+     - 老配置的短名见 ICON_ALIAS，映射到最接近的 Material 图标
+     - Material 里没有的名字 → 图标位留空（下面的 checkIcons 会量宽度，把没渲染成字的藏掉 + 提示）
+     - 非 ASCII 字符串（如 "📶"）原样当 emoji 画
+     ⚠️ Material Symbols 没有品牌 logo（docker/github 这类），要品牌图标得另加一套（如 Simple Icons）。 */
   var ICON_ALIAS = {
-    bowl: 'bowl-food', shield: 'shield-halved', server: 'server', globe: 'globe',
-    lock: 'lock', film: 'film', note: 'note-sticky', star: 'star', spark: 'bolt',
-    git: 'code-branch', home: 'house', wifi: 'wifi', cloud: 'cloud',
-    disk: 'hard-drive', nas: 'hard-drive', camera: 'camera',
-    cube: 'cube', container: 'cube', ladder: 'stairs', proxy: 'route'
+    bowl: 'restaurant', shield: 'shield', server: 'dns', globe: 'public',
+    lock: 'lock', film: 'movie', note: 'description', star: 'star',
+    spark: 'bolt', git: 'account_tree', home: 'home', wifi: 'wifi',
+    cloud: 'cloud', disk: 'storage', nas: 'storage', camera: 'photo_camera',
+    cube: 'deployed_code', container: 'deployed_code',
+    ladder: 'stairs', proxy: 'route'
   };
   var warnedIcon = 0;
-  function faClass(icon) {
-    if (/^brands?:/.test(icon)) return 'fa-brands fa-' + icon.replace(/^brands?:/, '');
-    if (BRANDS[icon]) return 'fa-brands fa-' + icon;
-    if (/^(solid|brands|regular)$/.test(icon)) return null;    /* 手滑只写了前缀 */
-    if (ICON_ALIAS[icon]) return 'fa-solid fa-' + ICON_ALIAS[icon];
-    if (/^fa-[a-z0-9-]+$/i.test(icon)) return 'fa-solid ' + icon;
-    if (/^[a-z0-9-]{2,40}$/i.test(icon)) {
-      if (warnedIcon++ < 2) {
-        console.warn('[nav] icon "' + icon + '" 不在内置短名里，按 fa-solid fa-' + icon +
-          ' 处理；FA Free 里若没这个名字，图标位会空着。内置短名：' + Object.keys(ICON_ALIAS).join('|'));
-      }
-      return 'fa-solid fa-' + icon;
-    }
-    return null;
+  function iconName(icon) {
+    if (ICON_ALIAS[icon]) return ICON_ALIAS[icon];
+    if (/^[a-z0-9_-]{2,40}$/i.test(icon)) return icon.toLowerCase().replace(/-/g, '_');
+    return null;                       /* 非 ASCII（emoji 等）：当文字画 */
   }
   function iconMarkup(icon) {
     if (!icon || typeof icon !== 'string') return '';
-    var cls = faClass(icon);
-    if (cls) return '<i class="' + cls + '" aria-hidden="true"></i>';
-    return '<span style="font-size:.92em;line-height:1">' + icon + '</span>';
+    var name = iconName(icon);
+    if (!name) return '<span style="font-size:.92em;line-height:1">' + icon + '</span>';
+    return '<span class="material-symbols-outlined" aria-hidden="true">' + name + '</span>';
+  }
+  function iconsReady() {
+    return !!(document.fonts && document.fonts.check &&
+      document.fonts.check('24px "Material Symbols Outlined"'));
+  }
+  /* 连字名写错时浏览器会把字母原样画出来（看着像图标坏了）。字体加载完量一下宽度：
+     真图标 ≈1em（这里用 offsetWidth = 布局宽度，不受 .ic 的 skew 影响，getBoundingClientRect
+     会把斜切后的外框算进去导致误判），没命中的名字明显更宽 → 藏掉 + 提示一次。 */
+  function checkIcons(root) {
+    var els = (root || document).querySelectorAll('.material-symbols-outlined');
+    for (var i = 0; i < els.length; i++) {
+      var el = els[i];
+      if (el.getAttribute('data-ms') === '1') continue;
+      el.setAttribute('data-ms', '1');
+      var fs = parseFloat(getComputedStyle(el).fontSize) || 24;
+      if (el.offsetWidth > fs * 1.5) {
+        el.style.visibility = 'hidden';
+        if (warnedIcon++ < 3) {
+          console.warn('[nav] 图标名 "' + el.textContent + '" 不在 Material Symbols 里，这个位置已留空。' +
+            '内置短名：' + Object.keys(ICON_ALIAS).join('|'));
+        }
+      }
+    }
   }
   var STAR_SVG =
     '<svg viewBox="0 0 100 100" aria-hidden="true">' +
@@ -227,6 +237,7 @@ import LINKS_EXAMPLE from './links.example.json';
       menuEl.innerHTML = '';
       menuEl.classList.toggle('sub', level > 0);
       menuEl.appendChild(frag);
+      if (iconsReady()) checkIcons(menuEl);   /* 字体已就绪就立刻量一次，写错的图标名直接藏掉 */
 
       if (!rows.length) {
         var hint = document.createElement('li');
@@ -464,6 +475,10 @@ import LINKS_EXAMPLE from './links.example.json';
     playWipe();
     staggerIn(rows, 95, 520);
     setTimeout(function () { select(0); }, 560 + rows.length * 95);
+    /* 字体可能比首屏慢一点到：加载完成后再量一次图标（只量没量过的） */
+    if (document.fonts && document.fonts.ready) {
+      document.fonts.ready.then(function () { checkIcons(menuEl); });
+    }
   }
 
   fetchJson(CONFIG_URL)['catch'](function (e) {

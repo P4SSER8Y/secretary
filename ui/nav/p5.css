@@ -250,8 +250,11 @@ ul.menu{list-style:none;width:min(620px,100%);display:flex;flex-direction:column
 }
 .item.on .ic{background:var(--accent);border-color:#fff;color:#0a0a0e;transform:skewX(var(--unskew)) rotate(-6deg) scale(1.06)}
 .ic svg{width:64%;height:64%;display:block}
-/* Font Awesome 图标是字体字形，字号跟着图标位尺寸走（≈ svg 版的 64%） */
-.ic i{font-size:calc(clamp(32px,3.9vh,40px) * .58);line-height:1}
+/* Material Symbols 图标：字号跟图标位走；用可变字体的 wght 轴把笔画调细，贴近原来的线框感 */
+.ic .material-symbols-outlined{
+  font-size:calc(clamp(32px,3.9vh,40px) * .68);
+  font-variation-settings:'FILL' 0,'wght' 300,'GRAD' 0,'opsz' 24;
+}
 
 /* 文案 */
 .txt{
