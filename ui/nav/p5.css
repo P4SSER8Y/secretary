@@ -250,6 +250,8 @@ ul.menu{list-style:none;width:min(620px,100%);display:flex;flex-direction:column
 }
 .item.on .ic{background:var(--accent);border-color:#fff;color:#0a0a0e;transform:skewX(var(--unskew)) rotate(-6deg) scale(1.06)}
 .ic svg{width:64%;height:64%;display:block}
+/* Font Awesome 图标是字体字形，字号跟着图标位尺寸走（≈ svg 版的 64%） */
+.ic i{font-size:calc(clamp(32px,3.9vh,40px) * .58);line-height:1}
 
 /* 文案 */
 .txt{

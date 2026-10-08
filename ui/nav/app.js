@@ -11,6 +11,11 @@
  * 条目两种形态：带非空 items 的 = 分组（二级菜单入口），只有 url 的 = 普通链接。
  * 层级用栈实现，所以 items 里再套 items 就是三级。
  * ========================================================================== */
+/* 图标用**自托管**的 Font Awesome Free（webfont）：JSON 里直接写 FA 的名字即可，不依赖 CDN，
+   内网/离线也能显示。FA 的 CSS 先引，p5.css 后引 —— 这样 p5.css 才能盖住它的默认尺寸。 */
+import '@fortawesome/fontawesome-free/css/fontawesome.css';
+import '@fortawesome/fontawesome-free/css/solid.css';
+import '@fortawesome/fontawesome-free/css/brands.css';
 import './p5.css';
 import LINKS_EXAMPLE from './links.example.json';
 
@@ -36,35 +41,53 @@ import LINKS_EXAMPLE from './links.example.json';
     });
   }
 
-  /* ----------------------------------------------------------- 图标 */
-  var ICON_PATHS = {
-    bowl:   '<path d="M2.6 11.2h18.8c0 5.2-4.2 8.6-9.4 8.6s-9.4-3.4-9.4-8.6Z"/><path d="M7.4 7.8c0-1.5 1.3-1.7 1.3-3.1M12 7c0-1.7 1.4-2 1.4-3.7M16.6 7.8c0-1.5 1.3-1.7 1.3-3.1"/>',
-    shield: '<path d="M12 2.6 20 6v6.1c0 4.9-3.4 8.4-8 9.3-4.6-.9-8-4.4-8-9.3V6l8-3.4Z"/><path d="M8.4 12.2 11 14.9l4.7-5.3"/>',
-    server: '<rect x="3" y="4" width="18" height="7" rx="1.6"/><rect x="3" y="13" width="18" height="7" rx="1.6"/><path d="M7 7.5h.01M7 16.5h.01"/>',
-    globe:  '<circle cx="12" cy="12" r="9.2"/><path d="M2.8 12h18.4M12 2.8c2.6 3.1 2.6 15.3 0 18.4M12 2.8c-2.6 3.1-2.6 15.3 0 18.4"/>',
-    lock:   '<rect x="4.4" y="10.4" width="15.2" height="10.6" rx="2.2"/><path d="M7.9 10.4V7.5a4.1 4.1 0 0 1 8.2 0v2.9"/><path d="M12 14.6v2.4"/>',
-    film:   '<rect x="3" y="4.6" width="18" height="14.8" rx="2.2"/><path d="M8 4.6v14.8M16 4.6v14.8M3 9.6h18M3 14.4h18"/>',
-    note:   '<path d="M5 3.6h9l5 5v11.8H5z"/><path d="M14 3.6v5h5"/><path d="M8.4 13h7.2M8.4 16.4h4.2"/>',
-    star:   '<path d="M12 3.4 14.4 9.4h6.4l-5.1 3.9 1.9 6.3L12 16l-5.6 3.6 1.9-6.3L3.2 9.4h6.4Z"/>',
-    spark:  '<path d="M12 3v3.6M12 17.4V21M3 12h3.6M17.4 12H21M6 6l2.6 2.6M15.4 15.4 18 18M18 6l-2.6 2.6M8.6 15.4 6 18"/>',
-    git:    '<circle cx="6.6" cy="6.6" r="2.4"/><circle cx="17.4" cy="6.6" r="2.4"/><path d="M6.6 9v4.2c0 2.4 1.9 4.3 4.3 4.3h6.5"/><path d="M17.4 9v3.4"/>',
-    home:   '<path d="M3.4 10.6 12 3.6l8.6 7"/><path d="M5.6 9.9V20.4h12.8V9.9"/><path d="M9.7 20.4v-5.5h4.6v5.5"/>'
+  /* ----------------------------------------------------------- 图标
+     Font Awesome Free（自托管 webfont）。JSON 里的 icon 直接写 FA 的名字：
+     - fa-solid 那套：wifi / server / hard-drive / network-wired / camera / cube / …
+     - 品牌图标：docker / github / cloudflare / linux / … （自动走 fa-brands），也可写 "brands:xxx"
+     - 内置短名（老配置沿用的那批）见 ICON_ALIAS，映射到含义最接近的 FA 图标
+     - 都不是的字符串，原样当 emoji 画（如 "📶"）
+     加图标不用改代码 —— 只要名字在 FA Free 里有。 */
+  var BRANDS = {};
+  ('docker github gitlab cloudflare linux apple ubuntu android js python node raspberry-pi ' +
+   'windows microsoft google aws telegram discord youtube spotify').split(' ')
+    .forEach(function (b) { BRANDS[b] = 1; });
+  /* 旧配置的短名 → FA 名（保持兼容，别删） */
+  var ICON_ALIAS = {
+    bowl: 'bowl-food', shield: 'shield-halved', server: 'server', globe: 'globe',
+    lock: 'lock', film: 'film', note: 'note-sticky', star: 'star', spark: 'bolt',
+    git: 'code-branch', home: 'house', wifi: 'wifi', cloud: 'cloud',
+    disk: 'hard-drive', nas: 'hard-drive', camera: 'camera',
+    cube: 'cube', container: 'cube', ladder: 'stairs', proxy: 'route'
   };
+  var warnedIcon = 0;
+  function faClass(icon) {
+    if (/^brands?:/.test(icon)) return 'fa-brands fa-' + icon.replace(/^brands?:/, '');
+    if (BRANDS[icon]) return 'fa-brands fa-' + icon;
+    if (/^(solid|brands|regular)$/.test(icon)) return null;    /* 手滑只写了前缀 */
+    if (ICON_ALIAS[icon]) return 'fa-solid fa-' + ICON_ALIAS[icon];
+    if (/^fa-[a-z0-9-]+$/i.test(icon)) return 'fa-solid ' + icon;
+    if (/^[a-z0-9-]{2,40}$/i.test(icon)) {
+      if (warnedIcon++ < 2) {
+        console.warn('[nav] icon "' + icon + '" 不在内置短名里，按 fa-solid fa-' + icon +
+          ' 处理；FA Free 里若没这个名字，图标位会空着。内置短名：' + Object.keys(ICON_ALIAS).join('|'));
+      }
+      return 'fa-solid fa-' + icon;
+    }
+    return null;
+  }
+  function iconMarkup(icon) {
+    if (!icon || typeof icon !== 'string') return '';
+    var cls = faClass(icon);
+    if (cls) return '<i class="' + cls + '" aria-hidden="true"></i>';
+    return '<span style="font-size:.92em;line-height:1">' + icon + '</span>';
+  }
   var STAR_SVG =
     '<svg viewBox="0 0 100 100" aria-hidden="true">' +
     '<path d="M50 2 57.6 36.2 87 19 66.4 46.9 98 50 66.4 53.1 87 81 57.6 63.8 50 98 42.4 63.8 13 81 33.6 53.1 2 50 33.6 46.9 13 19 42.4 36.2Z" ' +
     'fill="currentColor" stroke="#fff" stroke-width="2.5" stroke-linejoin="miter"/></svg>';
   /* P3 的选中标记：CSS 画的水面涟漪（见 .star .ripple），不引额外素材 */
   var RIPPLE_MARKUP = '<span class="ripple"></span>';
-
-  function iconMarkup(icon) {
-    if (!icon) return '';
-    if (ICON_PATHS[icon]) {
-      return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" ' +
-             'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + ICON_PATHS[icon] + '</svg>';
-    }
-    return '<span style="font-size:.92em;line-height:1">' + icon + '</span>';
-  }
 
   /* 分组：带非空 items 的条目就是二级菜单的入口；叶子是普通链接。
      两种可以混着放，顺序照配置来。 */

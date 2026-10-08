@@ -2,6 +2,7 @@
   "_readme": "示例配置（构建时被 nav/app.js import 打包进去，作为 /nav/links.json 取不到时的兜底）。真正生效的是服务端配置 nav.links 指向的那个文件，默认 data_path 下的 nav/links.json，例如 ~/ws/data/<实例>/nav/links.json —— 它不在仓库里。",
   "_二级菜单": "条目里带非空 items 就是二级菜单的入口（点它进子层，子层可再套 items 做三级）；只有 url 的就是普通链接。两者可以混着放，顺序按数组来。分组可以不给 url。",
   "_主题": "主题是「一层一份」：页面上的 theme 管主菜单；某个分组想在进它之后换主题，就在那一项自己身上写 theme（如下面的内网服务写 \"p3\"）—— 所以不同分组可以各用各的，不写就沿用父层。可选值：\"p5\"（怪盗红 + 尖刺星）、\"p3\"（深蓝水面 + 涟漪标记），切换时页面先用斜条擦一下再换色。同一层里所有条目都用该层主题色（包括用来进子菜单的那一项），条目上也可以写 accent 单独改这一条的重点色，不写就跟随该层主题（跨主题写死颜色会让这条跟本层不一致，一般别写）。",
+  "_图标": "icon 直接写 Font Awesome 的名字（自托管 FA Free，不依赖 CDN、离线可用）：wifi / server / hard-drive / network-wired / camera / cube / house / code-branch / bowl-food / shield-halved / note-sticky / bolt / globe / lock / film / star 等随便挑；品牌图标写 docker / github / cloudflare / linux（自动走 fa-brands，也可写 \"brands:xxx\"）。老短名（bowl|shield|server|globe|lock|film|note|star|spark|git|home|wifi|cloud|disk|nas|camera|cube|container|ladder|proxy）继续可用，会映射到最接近的 FA 图标。其它字符串原样当 emoji 画（如 📶）。名字在 FA Free 里没有时图标位会空着，控制台会提示。",
   "title": "NAVI",
   "subtitle": "Take Your Heart",
   "watermark": "Take Your Heart",
