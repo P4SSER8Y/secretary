@@ -206,9 +206,8 @@ import LINKS_EXAMPLE from './links.example.json';
           '<span class="ic">' + iconMarkup(link.icon) + '</span>' +
           '<span class="txt">' +
             '<span class="name">' + (link.name || '') + '</span>' +
-            '<span class="desc">' + (link.desc || link.tag || '') + '</span>' +
+            '<span class="desc">' + (link.desc || '') + '</span>' +
           '</span>' +
-          ((link.tag) ? '<span class="tag">' + link.tag + '</span>' : '') +
           (grp ? '<span class="cnt">' + pad2(kids.length) + '</span>' : '') +
           '<span class="go" aria-hidden="true">' + (grp ? '»' : '▶') + '</span>';
 

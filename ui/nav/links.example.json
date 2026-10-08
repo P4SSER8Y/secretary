@@ -13,29 +13,25 @@
       "name": "示例服务",
       "url": "https://example.com",
       "desc": "这是示例配置里的占位条目",
-      "icon": "public",
-      "tag": "DEMO"
+      "icon": "public"
     },
     {
       "name": "内网服务",
       "desc": "分组示例：进去看二级菜单（P3 主题）",
       "icon": "dns",
-      "tag": "LAN",
       "theme": "p3",
       "items": [
         {
           "name": "子项甲",
           "url": "http://192.168.1.2/",
           "desc": "desc 只在选中时滑出来",
-          "icon": "shield",
-          "tag": "DNS"
+          "icon": "shield"
         },
         {
           "name": "子项乙",
           "url": "http://192.168.1.3/",
           "desc": "子项缩进一档，左边有红轨",
-          "icon": "router",
-          "tag": "LAN"
+          "icon": "router"
         }
       ]
     },
@@ -43,21 +39,18 @@
       "name": "影音",
       "desc": "分组示例：没写 theme，子菜单沿用父层（P5）",
       "icon": "movie",
-      "tag": "MEDIA",
       "items": [
         {
           "name": "子项丙",
           "url": "http://192.168.1.4/",
           "desc": "同一个页面里两种主题并存",
-          "icon": "movie",
-          "tag": "MEDIA"
+          "icon": "movie"
         },
         {
           "name": "子项丁",
           "url": "http://192.168.1.5/",
           "desc": "返回上一层，主题也跟着退回去",
-          "icon": "description",
-          "tag": "NOTE"
+          "icon": "description"
         }
       ]
     }

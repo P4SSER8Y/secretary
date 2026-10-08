@@ -275,16 +275,6 @@ ul.menu{list-style:none;width:min(620px,100%);display:flex;flex-direction:column
 }
 .item.on .desc{max-height:26px;opacity:1;transform:none;color:var(--c2)}
 
-/* 右侧小标签（config.js 里的 tag 字段） */
-.tag{
-  position:relative;z-index:4;flex:0 0 auto;
-  font-family:var(--font-disp);font-size:clamp(9px,1.25vh,12px);letter-spacing:.14em;
-  padding:3px 7px 2px;color:#fff;background:rgba(255,255,255,.10);
-  border:1px solid rgba(255,255,255,.28);transform:skewX(var(--unskew));
-  transition:background .25s ease,color .25s ease,border-color .25s ease;
-}
-.item.on .tag{background:#fff;color:var(--accent);border-color:#fff}
-
 /* 尾部箭头 */
 .go{
   position:relative;z-index:4;flex:0 0 auto;
