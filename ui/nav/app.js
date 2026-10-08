@@ -25,7 +25,7 @@ import LINKS_EXAMPLE from './links.example.json';
     watermark: 'Take Your Heart',
     newTab: false,    /* false = 同标签页打开（先播擦除再跳）；true = 交给浏览器开新标签 */
     theme: 'p5',      /* 主菜单主题 */
-    subTheme: '',     /* 二级及以下主题；留空 = 跟 theme 同款 */
+    subTheme: '',     /* 兼容字段：分组条目自己没写 theme 时，子菜单用它；一般直接写在条目上 */
     links: []
   };
 
@@ -104,7 +104,9 @@ import LINKS_EXAMPLE from './links.example.json';
     function pad2(n) { return String(n).padStart(2, '0'); }
 
     /* ------------------------------------------------- 主题（P5 / P3 切换）
-       主菜单用 theme，二级及以下用 subTheme。切主题时先用斜条擦过屏幕，
+       主题是「一层一份」：主菜单用页面配置里的 theme；进哪个分组，子菜单就用
+       那一项自己写的 theme（写在分组条目上，所以不同分组可以各用各的；兼容
+       subTheme）。条目上没写就沿用父层的主题。切主题时先用斜条擦过屏幕，
        盖住之后才换配色，避免整页颜色硬切。 */
     var flashEl = document.createElement('div');
     flashEl.className = 'flash';
@@ -112,15 +114,19 @@ import LINKS_EXAMPLE from './links.example.json';
     for (var fi = 0; fi < 5; fi++) flashEl.appendChild(document.createElement('span'));
     document.body.appendChild(flashEl);
 
+    function validTheme(t) { return MARK[t] ? t : null; }
+    /* 每一层的主题（下标 = 层号）：0 是主菜单，进分组时往里压一项 */
+    var themes = [validTheme(CFG.theme) || DEFAULTS.theme];
+    /* 分组的子菜单主题：条目自带的 theme（兼容 subTheme）→ 全局 subTheme → 父层 */
+    function childTheme(g, parentLevel) {
+      return validTheme(g && (g.theme || g.subTheme)) ||
+             validTheme(CFG.subTheme) || themeFor(parentLevel);
+    }
+
     var themeNow = null;
     var enterDelay = 0;    /* 主题擦除期间，新行要等它盖上来再入场 */
 
-    function themeFor(level) {
-      var want = (level === 0)
-        ? (CFG.theme || DEFAULTS.theme)
-        : (CFG.subTheme || CFG.theme || DEFAULTS.theme);
-      return MARK[want] ? want : DEFAULTS.theme;
-    }
+    function themeFor(level) { return themes[level] || themes[0]; }
 
     function applyTheme(level) {
       var want = themeFor(level);
@@ -262,6 +268,7 @@ import LINKS_EXAMPLE from './links.example.json';
         titles.push(g.name || '');
         stack.push(kids);
         depth += 1;
+        themes.push(childTheme(g, depth - 1));   /* 子菜单主题跟这一项走 */
         buildRows(kids, depth);
         setCrumb();
         var base = 40 + enterDelay;
@@ -283,6 +290,7 @@ import LINKS_EXAMPLE from './links.example.json';
         origins.pop();
         titles.pop();
         stack.pop();
+        themes.pop();                            /* 回到父层，主题也跟着退回去 */
         depth -= 1;
         buildRows(stack[depth], depth);
         setCrumb();

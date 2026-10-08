@@ -78,8 +78,8 @@ Also don't install `rsign2` in CI — only `make sign` uses it. `VITE_HODOR_ENTR
 - `server/src/nav.rs` 提供 `GET /nav/links.json`，读配置 `nav.links` 指定的文件；相对路径按 `data_path` 解析（`links = "nav/links.json"` + `data_path = "/data"` ⇒ `/data/nav/links.json`），文件不存在返回 404。
 - 页面启动时 `fetch('/nav/links.json', {cache:'no-store'})`；取不到就用**编译进 bundle 的**示例配置（`ui/nav/links.example.json` 在构建时被 import，不再单独发请求），不会白屏。
 - 部署：把 `links.json` 放到实例数据目录（如 `~/ws/data/<实例>/nav/links.json`），并在 `Local.toml` 里写 `[default.nav]` / `[release.nav]` 的 `links`（默认值见 `server/Rocket.toml`）。配置文件放 data 目录，`app/update.sh` 升级不会动它。
-- 字段：`title` / `subtitle` / `watermark` / `newTab` / `theme` / `subTheme` / `links[...]`。条目带非空 `items` 就是二级菜单入口（子层可再套 `items` 做三级），叶子字段是 `{name,url,desc,icon,tag,accent}`；`icon` 支持 bowl|shield|server|globe|lock|film|note|star|spark|git|home，也可直接写 emoji。
-- 主题按「页」生效：`theme` 管主菜单、`subTheme` 管二级及以下（留空 = 跟 theme 同款），可选 `"p5"`（怪盗红 + 尖刺星）/ `"p3"`（深蓝水面 + 涟漪标记）。**同一页所有条目都用该页主题色**（包括进子菜单的那一项）；条目级 `accent` 会覆盖它，跨主题写死颜色会让那条看起来“跑到了别的主题”，一般别写。切主题时先用斜条擦过整屏再换配色（`.flash` 元素由 JS 建）。
+- 字段：`title` / `subtitle` / `watermark` / `newTab` / `theme` / `subTheme` / `links[...]`。条目带非空 `items` 就是二级菜单入口（子层可再套 `items` 做三级），**分组条目可以自带 `theme` 指定它子菜单的主题**；叶子字段是 `{name,url,desc,icon,tag,accent}`；`icon` 支持 bowl|shield|server|globe|lock|film|note|star|spark|git|home，也可直接写 emoji。
+- 主题是「一层一份」：页面上的 `theme` 管主菜单；**分组条目自带的 `theme`（兼容 `subTheme`）管它自己开出来的那一层**，没写就沿用父层（页面级 `subTheme` 只作全局兜底）。实现是 `nav/app.js` 里的 `themes[]` 栈（下标 = 层号，进层 push、退层 pop）+ `themeFor(level)`，切层时照样走斜条擦除。可选 `"p5"`（怪盗红 + 尖刺星）/ `"p3"`（深蓝水面 + 涟漪标记）。**同一层所有条目都用该层主题色**（包括进子菜单的那一项）；条目级 `accent` 会覆盖它，跨主题写死颜色会让那条看起来“跑到了别的主题”，一般别写。切主题时先用斜条擦过整屏再换配色（`.flash` 元素由 JS 建）。
 - `newTab`：`false`（推荐）= 同标签页打开，点击先播擦除动画再跳转；`true` = 交给浏览器开新标签（擦除动画就播不出来）。
 - ℹ️ release 二进制由本仓库 CI 从 `v*` tag 构建，本身就含 `nav` 路由，所以 `app/update.sh` 升级后 `/nav/links.json` 照常可用；只有换成不含该路由的第三方包时才会重新 404（页面退回示例配置）。
 
