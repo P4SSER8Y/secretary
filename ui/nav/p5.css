@@ -293,8 +293,9 @@ ul.menu{list-style:none;width:min(620px,100%);display:flex;flex-direction:column
 }
 
 /* ============================ 二级菜单 ============================ */
-/* 有了面包屑，菜单列改纵向：面包屑在上、列表在下，都靠右 */
-.menu-wrap{flex-direction:column;align-items:flex-end;gap:clamp(10px,1.6vh,16px)}
+/* 有了面包屑，菜单列改纵向：面包屑在上、列表在下，都靠右。
+   gap 给得比"看起来需要"的大：选中项的星/涟漪会纵向溢出到行外，得留出净空。 */
+.menu-wrap{flex-direction:column;align-items:flex-end;gap:clamp(22px,4.2vh,52px)}
 
 /* 换层时旧行向左飘走（必须写在 .item.in 之后，否则盖不住入场态） */
 .item.out{
@@ -433,4 +434,79 @@ ul.menu.sub::before{
     transition-duration:.16s!important;
   }
   .wipe.play span{animation-duration:.001ms!important}
+}
+
+/* ============================ 主题：P5 / P3 ============================
+ * 一个主题 = 一整套语义变量 + 几个标志性形状。主菜单主题由配置 theme 决定，
+ * 二级及以下由 subTheme 决定（不配就跟主菜单同款）——所以要「二级菜单换个
+ * 主题」只要写 subTheme，不用改这里的结构。
+ * 切主题时 JS 先用 .flash 斜条擦过屏幕，盖住之后才换配色，避免整页硬切。 */
+html[data-theme="p3"]{
+  --c1:#1a5fd8;--c2:#6fb3ff;--c3:#06295e;--c1-rgb:26,95,216;
+  --glow-1:#0a2c66;--glow-2:#03102b;
+  --bg:#03060f;--ink:#050a18;--ink-2:#0b1630;--ink-3:#070f22;
+  --paper:#e7efff;--cyan:#8fe4ff;
+}
+
+/* 水面：P3 的招牌横线 + 下方冷光（放在菜单下方，别从列表中间穿过去） */
+html[data-theme="p3"] body::after{
+  content:"";position:fixed;left:-5%;right:-5%;bottom:5%;height:110px;z-index:1;pointer-events:none;
+  background:
+    linear-gradient(90deg,rgba(255,255,255,0) 0%,rgba(198,226,255,.5) 26%,#fff 50%,rgba(198,226,255,.5) 74%,rgba(255,255,255,0) 100%) top/100% 1.5px no-repeat,
+    linear-gradient(180deg,rgba(26,95,216,.30) 0%,rgba(26,95,216,.07) 42%,rgba(0,0,0,0) 100%);
+  animation:waterLine 7.5s ease-in-out infinite;
+}
+@keyframes waterLine{
+  0%,100%{opacity:.72;transform:translateY(0)}
+  50%{opacity:1;transform:translateY(-5px)}
+}
+
+/* 背景那颗大尖刺星在 P3 下换成一团月亮似的光晕 */
+html[data-theme="p3"] .bg-star{
+  color:transparent;opacity:.55;border-radius:50%;
+  background:radial-gradient(circle at 42% 38%,rgba(214,233,255,.20),rgba(26,95,216,.10) 56%,rgba(0,0,0,0) 74%);
+}
+html[data-theme="p3"] .bg-star svg{display:none}
+html[data-theme="p3"] .s2{background:#8fd0ff;opacity:.09}
+html[data-theme="p3"] .wm{-webkit-text-stroke:2px rgba(190,222,255,.14)}
+
+/* 选中标记：P5 是尖刺星，P3 是「水面涟漪」（同心圆环，CSS 画的，不用额外素材）。
+   涟漪是空心的 + 半透明，压在面包屑/行下面都不挡住字。 */
+.star .ripple{
+  display:block;width:100%;aspect-ratio:1;border-radius:50%;
+  border:5px solid rgba(228,238,255,.95);
+  background:radial-gradient(circle at 50% 50%,rgba(26,95,216,.30) 0%,rgba(26,95,216,.07) 58%,rgba(0,0,0,0) 70%);
+  box-shadow:0 0 0 14px rgba(150,196,255,.26),0 0 0 30px rgba(120,170,255,.12);
+  filter:drop-shadow(2px 2px 0 rgba(255,255,255,.55));
+  animation:rippleBreath 3.6s ease-in-out infinite;
+}
+html[data-theme="p5"] .star .ripple{display:none}
+@keyframes rippleBreath{
+  0%,100%{transform:scale(.96);opacity:.92}
+  50%{transform:scale(1.05);opacity:1}
+}
+/* P3 的标记线更细，整体缩一号，免得顶到面包屑上 */
+html[data-theme="p3"] .star{width:clamp(84px,9.6vh,108px)}
+
+/* P3 的行：选中面板偏蓝，标题换显示字体（更接近 P3 那种粗体大写字） */
+html[data-theme="p3"] .item.on .p-ink{background:linear-gradient(101deg,#123a86 0%,#0a1f4d 56%,#08163a 100%)}
+html[data-theme="p3"] .name{font-family:var(--font-disp);font-weight:400;letter-spacing:.02em}
+
+/* 切主题时的斜条擦除（元素由 JS 建，按目标主题上色） */
+.flash{position:fixed;inset:-12% -8%;z-index:88;display:flex;visibility:hidden;pointer-events:none}
+.flash span{flex:1 1 0;background:var(--flash-c,#e60012);transform:translateX(-650%) skewX(-20deg)}
+.flash span:nth-child(even){background:var(--flash-ink,#0a0a0e)}
+.flash.play{visibility:visible}
+.flash.play span{animation:flashSweep .56s cubic-bezier(.5,0,.35,1) both}
+.flash.play span:nth-child(1){animation-delay:0ms}
+.flash.play span:nth-child(2){animation-delay:8ms}
+.flash.play span:nth-child(3){animation-delay:16ms}
+.flash.play span:nth-child(4){animation-delay:24ms}
+.flash.play span:nth-child(5){animation-delay:32ms}
+/* 进场要快、中间要「停住」足够久：JS 在 230ms 换配色，那一刻必须整屏盖住 */
+@keyframes flashSweep{
+  0%{transform:translateX(-650%) skewX(-20deg)}
+  20%{transform:translateX(0) skewX(-20deg)}
+  80%{transform:translateX(0) skewX(-20deg)}
+  100%{transform:translateX(650%) skewX(-20deg)}
 }

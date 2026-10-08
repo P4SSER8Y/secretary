@@ -7,6 +7,9 @@
  * 配置是动态的：启动时拉 /nav/links.json（不在仓库里，跟部署走 —— 由服务端
  * nav.links 配置指向，默认 data_path 下的 nav/links.json）；拉不到就用编译进来的
  * 示例配置（nav/links.example.json），页面不会白屏。
+ *
+ * 条目两种形态：带非空 items 的 = 分组（二级菜单入口），只有 url 的 = 普通链接。
+ * 层级用栈实现，所以 items 里再套 items 就是三级。
  * ========================================================================== */
 import './p5.css';
 import LINKS_EXAMPLE from './links.example.json';
@@ -21,6 +24,8 @@ import LINKS_EXAMPLE from './links.example.json';
     subtitle: '',
     watermark: 'Take Your Heart',
     newTab: true,
+    theme: 'p5',      /* 主菜单主题 */
+    subTheme: '',     /* 二级及以下主题；留空 = 跟 theme 同款 */
     links: []
   };
 
@@ -49,6 +54,8 @@ import LINKS_EXAMPLE from './links.example.json';
     '<svg viewBox="0 0 100 100" aria-hidden="true">' +
     '<path d="M50 2 57.6 36.2 87 19 66.4 46.9 98 50 66.4 53.1 87 81 57.6 63.8 50 98 42.4 63.8 13 81 33.6 53.1 2 50 33.6 46.9 13 19 42.4 36.2Z" ' +
     'fill="currentColor" stroke="#fff" stroke-width="2.5" stroke-linejoin="miter"/></svg>';
+  /* P3 的选中标记：CSS 画的水面涟漪（见 .star .ripple），不引额外素材 */
+  var RIPPLE_MARKUP = '<span class="ripple"></span>';
 
   function iconMarkup(icon) {
     if (!icon) return '';
@@ -63,6 +70,15 @@ import LINKS_EXAMPLE from './links.example.json';
      两种可以混着放，顺序照配置来。 */
   function isGroup(l) { return !!(l && l.items && l.items.length); }
   function usable(l) { return !!l && (!!l.url || isGroup(l)); }
+
+  /* ----------------------------------------------------------- 主题色表 */
+  /* 每个主题一组：斜条擦除用的主色 + 暗色 */
+  var THEME_COLORS = {
+    p5: { main: '#e60012', ink: '#0a0a0e' },
+    p3: { main: '#1a5fd8', ink: '#050a18' }
+  };
+  /* 选中标记（星 / 涟漪）：键同时用来判断主题名是否合法 */
+  var MARK = { p5: STAR_SVG, p3: RIPPLE_MARKUP };
 
   /* ----------------------------------------------------------- 主流程 */
   function main(raw) {
@@ -87,7 +103,49 @@ import LINKS_EXAMPLE from './links.example.json';
 
     function pad2(n) { return String(n).padStart(2, '0'); }
 
+    /* ------------------------------------------------- 主题（P5 / P3 切换）
+       主菜单用 theme，二级及以下用 subTheme。切主题时先用斜条擦过屏幕，
+       盖住之后才换配色，避免整页颜色硬切。 */
+    var flashEl = document.createElement('div');
+    flashEl.className = 'flash';
+    flashEl.setAttribute('aria-hidden', 'true');
+    for (var fi = 0; fi < 5; fi++) flashEl.appendChild(document.createElement('span'));
+    document.body.appendChild(flashEl);
+
+    var themeNow = null;
+    var enterDelay = 0;    /* 主题擦除期间，新行要等它盖上来再入场 */
+
+    function themeFor(level) {
+      var want = (level === 0)
+        ? (CFG.theme || DEFAULTS.theme)
+        : (CFG.subTheme || CFG.theme || DEFAULTS.theme);
+      return MARK[want] ? want : DEFAULTS.theme;
+    }
+
+    function applyTheme(level) {
+      var want = themeFor(level);
+      enterDelay = 0;
+      if (themeNow === want) return want;
+      if (themeNow === null) {                       /* 首次：直接定色，不闪 */
+        themeNow = want;
+        document.documentElement.setAttribute('data-theme', want);
+        return want;
+      }
+      var col = THEME_COLORS[want] || THEME_COLORS.p5;
+      flashEl.style.setProperty('--flash-c', col.main);
+      flashEl.style.setProperty('--flash-ink', col.ink);
+      flashEl.classList.remove('play');
+      void flashEl.offsetWidth;
+      flashEl.classList.add('play');
+      themeNow = want;
+      enterDelay = 220;
+      setTimeout(function () { document.documentElement.setAttribute('data-theme', want); }, 230);
+      return want;
+    }
+
     function buildRows(list, level) {
+      var th = applyTheme(level);
+      var mark = MARK[th] || STAR_SVG;
       var frag = document.createDocumentFragment();
       rows = [];
       list.forEach(function (link, i) {
@@ -111,7 +169,7 @@ import LINKS_EXAMPLE from './links.example.json';
         a.setAttribute('aria-label', (link.name || '') + (link.desc ? ' — ' + link.desc : '') + (grp ? '（子菜单）' : ''));
 
         a.innerHTML =
-          '<span class="star" aria-hidden="true">' + STAR_SVG + '</span>' +
+          '<span class="star" aria-hidden="true">' + mark + '</span>' +
           '<span class="poly p-white"></span>' +
           '<span class="poly p-red"></span>' +
           '<span class="poly p-ink"></span>' +
@@ -206,11 +264,12 @@ import LINKS_EXAMPLE from './links.example.json';
         depth += 1;
         buildRows(kids, depth);
         setCrumb();
-        staggerIn(rows, 68, 40);
+        var base = 40 + enterDelay;
+        staggerIn(rows, 68, base);
         setTimeout(function () {
           select(0);
           busy = false;
-        }, 40 + rows.length * 68 + 90);
+        }, base + rows.length * 68 + 90);
       }, wait);
     }
 
@@ -227,11 +286,12 @@ import LINKS_EXAMPLE from './links.example.json';
         depth -= 1;
         buildRows(stack[depth], depth);
         setCrumb();
-        staggerIn(rows, 68, 30);
+        var base = 30 + enterDelay;
+        staggerIn(rows, 68, base);
         setTimeout(function () {
           select((from >= 0 && from < rows.length) ? from : 0);
           busy = false;
-        }, 30 + rows.length * 68 + 90);
+        }, base + rows.length * 68 + 90);
       }, wait);
     }
 
