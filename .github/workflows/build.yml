@@ -1,11 +1,15 @@
-name: develop
+name: build (merged, manual)
 
-# 只跑分支 push。打 tag 时由 release.yml 负责 —— 原来这里是 `on: push:`（无过滤），
-# tag push 会把同一套编译再跑一遍。
+# 可选的一体化版本：把 develop.yml + release.yml 合并成一个工作流，按 ref 分派
+# （分支 push → 上传 artifact；tag push → 发 release）。当前是手动触发，避免和
+# develop.yml / release.yml 重复跑。想改用它：把下面 `on:` 换成
+#     on:
+#       push:
+#         branches: ['**']
+#         tags: ['v*']
+# 然后删掉 develop.yml 和 release.yml 两个文件即可。
 on:
-  push:
-    branches:
-      - '**'
+  workflow_dispatch:
 
 jobs:
   main:
@@ -24,10 +28,8 @@ jobs:
         with:
           target: ${{ matrix.target }}
       - name: Install dependencies
-        # 只装 ui + server 依赖；rsign2（update-rsign）只有 `make sign` 才用得到
         run: make -j update-ui update-server
       - name: Build & package
-        # `make package` 的依赖里已经含 `all`（ui + server），原来先跑一次 make 等于把 UI 和 Rust 都编两遍
         run: make -j package TARGET=${{ matrix.target }}
         env:
           VITE_HODOR_ENTRY: ${{ secrets.HODOR_ENTRY }}
@@ -35,9 +37,16 @@ jobs:
         run: tree ./
         working-directory: ./build
       - name: Upload artifacts
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
         uses: actions/upload-artifact@v4
         with:
           name: secretary_${{ matrix.target }}
           path: ./build/secretary_${{ matrix.target }}.tar.gz
           if-no-files-found: error
           overwrite: true
+      - name: Release
+        if: ${{ startsWith(github.ref, 'refs/tags/') }}
+        uses: softprops/action-gh-release@v2
+        with:
+          make_latest: true
+          files: ./build/secretary_${{ matrix.target }}.tar.gz

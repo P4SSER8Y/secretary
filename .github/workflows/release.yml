@@ -1,3 +1,6 @@
+name: release
+
+# 只在打 tag 时跑，发布 release。分支 push 由 develop.yml 负责。
 on:
   push:
     tags:
@@ -20,13 +23,11 @@ jobs:
         with:
           target: ${{ matrix.target }}
       - name: Install dependencies
-        run: make -j update TARGET=${{matrix.target}}
-      - name: Build
-        run: make -j TARGET=${{matrix.target}}
-        env:
-          VITE_HODOR_ENTRY: ${{ secrets.HODOR_ENTRY }}
-      - name: Package
-        run: make -j package TARGET=${{matrix.target}}
+        # 只装 ui + server 依赖；rsign2（update-rsign）只有 `make sign` 才用得到
+        run: make -j update-ui update-server
+      - name: Build & package
+        # `make package` 的依赖里已经含 `all`（ui + server），原来先跑一次 make 等于把 UI 和 Rust 都编两遍
+        run: make -j package TARGET=${{ matrix.target }}
         env:
           VITE_HODOR_ENTRY: ${{ secrets.HODOR_ENTRY }}
       - name: Show artifacts
@@ -36,4 +37,4 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           make_latest: true
-          files: ./build/secretary_${{matrix.target}}.tar.gz
+          files: ./build/secretary_${{ matrix.target }}.tar.gz
