@@ -1,15 +1,14 @@
-name: build (merged, manual)
+name: build
 
-# 可选的一体化版本：把 develop.yml + release.yml 合并成一个工作流，按 ref 分派
-# （分支 push → 上传 artifact；tag push → 发 release）。当前是手动触发，避免和
-# develop.yml / release.yml 重复跑。想改用它：把下面 `on:` 换成
-#     on:
-#       push:
-#         branches: ['**']
-#         tags: ['v*']
-# 然后删掉 develop.yml 和 release.yml 两个文件即可。
+# 一次 push 只跑一个工作流：分支 push 传到 artifact，tag push 发 release。
+# 原来 develop.yml（`on: push:` 没过滤）+ release.yml 会在打 tag 时各跑一遍同样的编译，
+# 而且每个 job 里 UI/Rust 还要编两遍（`make` 之后又 `make package`，而 package 已依赖 all）。
 on:
-  workflow_dispatch:
+  push:
+    branches:
+      - '**'
+    tags:
+      - 'v*'
 
 jobs:
   main:
@@ -28,8 +27,10 @@ jobs:
         with:
           target: ${{ matrix.target }}
       - name: Install dependencies
+        # 只装 ui + server 依赖；rsign2（update-rsign）只有 `make sign` 用得到
         run: make -j update-ui update-server
       - name: Build & package
+        # `make package` 的依赖里已经含 `all`（ui + server），不必先单独跑一次 make
         run: make -j package TARGET=${{ matrix.target }}
         env:
           VITE_HODOR_ENTRY: ${{ secrets.HODOR_ENTRY }}
