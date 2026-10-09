@@ -468,6 +468,15 @@ import LINKS_EXAMPLE from './links.example.json';
     if (document.fonts && document.fonts.ready) {
       document.fonts.ready.then(function () { checkIcons(menuEl); });
     }
+    /* --------------------------------------------------------- PWA：Service Worker
+       只为缓存，不改变行为：服务端不发任何缓存头 → 每次打开都要重下 4MB 字体，
+       SW 把它变成"只下一次"。版本号取本 bundle 文件名里的内容哈希 —— 每次构建自动变，
+       浏览器因此会去做更新检查，同时又不会被 sw.js 自身的缓存卡住。 */
+    if ('serviceWorker' in navigator && location.protocol === 'https:') {
+      var swVer = (String(import.meta.url).match(/index-([A-Za-z0-9_-]{6,})/) || [])[1] || 'dev';
+      navigator.serviceWorker.register('/sw.js?v=' + swVer, { scope: '/' })
+        ['catch'](function (e) { console.warn('[nav] service worker 注册失败：' + e.message); });
+    }
   }
 
   fetchJson(CONFIG_URL)['catch'](function (e) {
