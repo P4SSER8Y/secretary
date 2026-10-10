@@ -2,6 +2,8 @@
 
 This file provides guidance to coding agents (Claude Code / Codex / Hermes, …) when working with code in this repository.
 
+它是**索引 + 公共说明**：各模块的细节拆进了就近的子文件（见下面的索引表），在对应目录里干活时会被自动读到。改东西前先看这里，再看对应子文件。
+
 ## Build & Development
 
 ```sh
@@ -27,39 +29,24 @@ cd server && cargo run --release
 cd ui && yarn dev
 ```
 
-## Architecture
+## Repo layout
 
-Monorepo with two top-level components: a **Rust Rocket web server** (`server/`) and a **Vite + Vue 3 SPA** (`ui/`).
+| 目录 | 是什么 |
+|---|---|
+| `server/` | Rust（Rocket v0.5）后端，Cargo workspace，模块按 `switches.*` 开关挂载 |
+| `ui/` | Vite 5 + Vue 3 + TS + Tailwind + daisyUI 多入口前端（打包成 `dist/` 交给 server 静态托管） |
+| `scripts/` | 辅助脚本 |
 
-### Server (`server/`)
+## 细节索引
 
-A Rocket (v0.5) web server organized as a Cargo workspace. The main binary at `server/src/main.rs` uses a `Figment`-based config merging chain: `Rocket.toml` → nested overrides via `local` field → profile selection. Each module is feature-gated via `switches.*` in config and conditionally mounted.
+| 领域 | 看哪 |
+|---|---|
+| server 架构、各模块 crate（meme/recipe/kindle/…）、关键模式 | [`server/AGENTS.md`](server/AGENTS.md) |
+| UI 入口、开发代理、构建产物 | [`ui/AGENTS.md`](ui/AGENTS.md) |
+| **导航页**（挂在 `/`）：`links.json` 契约、主题、图标、Service Worker、PWA | [`ui/nav/AGENTS.md`](ui/nav/AGENTS.md) |
+| CI/CD、打包、配置加载 | 本文件（下面三节） |
 
-**Workspace crates** (under `server/crates/`):
-
-- **bark** — iOS push notifications via [Bark](https://github.com/finb/bark) service. Sends HTTP POST with JSON payload.
-- **inbox** — Pastebin with file/text upload, expiration, 4-digit code retrieval. Sled-based metadata storage.
-- **kindle** — Kindle screensaver generator. Renders grayscale dashboards (date, weather, battery) as `GrayImage`. Three style variants (`alpha`, `bravo`, `charlie`).
-- **let_server_run** — WeChat bot agent powered by [LetServerRun](https://letserver.run/). Long-polling job loop with extensible executors (echo, shell).
-- **meme** — Personal media gallery with S3-backed storage, JWT auth via external gate, image processing (thumbnails, dithering for e-ink, video thumbnails via ffmpeg).
-- **qweather** — Weather forecast fetcher, powered by [QWeather API](https://dev.qweather.com/). Cron-driven periodic updates.
-- **recipe** — Shared meal ordering + step-guided cooking + online recipe editor. Markdown-based recipe storage with YAML frontmatter (Chinese `name` as unique key), per-dish portion scaling, ingredient aggregation, polling-based multi-device sync. S3-backed storage with push-then-sync write model.
-- **tsdb** — Thin InfluxDB2 wrapper for time-series metrics.
-- **utils** — Shared utilities: sled-backed key-value store (`database::Db`), configurable data path.
-
-### UI (`ui/`)
-
-Vite 5 + Vue 3 + TypeScript + Tailwind CSS + daisyUI. Multi-page app with these entry points (defined in `vite.config.ts`):
-
-- **nav** — the project-root `index.html` + `ui/nav/`, the P5-style start page served at `/` (see *Nav page* below)
-- **inbox** — `/inbox/index.html`, pastebin frontend
-- **meme** — `/meme/index.html`, media gallery with waterfall/gallery/tag-cloud views
-- **kindle** — `/kindle/debug/index.html`, Kindle dashboard debug preview
-- **recipe** — `/recipe/index.html`, meal ordering (MenuPage) + step-guided cooking (CookingPage) with caramellatte daisyUI theme
-
-Dev server proxies `/inbox/api`, `/meme/i`, `/album/api`, and `/recipe/api` to configurable backends. Proxy context strings must NOT include `^` prefix — it would be treated as a literal character by http-proxy-middleware, breaking path matching.
-
-### CI/CD
+## CI/CD
 
 One workflow does everything: `.github/workflows/build.yml` cross-compiles for `aarch64-unknown-linux-musl` and `x86_64-unknown-linux-musl`, uploads artifacts on branch pushes, and publishes a GitHub release on `v*` tags (same run, dispatched by `github.ref`).
 
@@ -70,44 +57,10 @@ A tag push must cost exactly one workflow run (2 jobs, one per target). Two trap
 
 Also don't install `rsign2` in CI — only `make sign` uses it. `VITE_HODOR_ENTRY` is a build-time secret for meme auth.
 
-### Nav page (`/`)
-
-`ui/index.html` + `ui/nav/`（Vite 入口，和其它页面一样走 `yarn build`）：项目根 html 构建成 `dist/index.html`，被 Rocket 的 `FileServer`（`Options::Index`，rank 999）服务在 `/`。样式（`nav/p5.css`）和示例配置都在 `nav/app.js` 里 `import`，生产构建走 esbuild 压缩 + CSS 压缩 + 文件名内容哈希（`assets/xxx-<hash>.{js,css,woff2}`）；所以它不再是 `public/` 里的原样拷贝。例外是**故意**放 `public/` 的几样东西：`sw.js`（Service Worker，必须是稳定的 `/sw.js` URL，不能被改名）、`favicon.ico` + 两张图标 PNG（`favicon-256.png`、`apple-touch-icon.png`，另有 `icon-512.png` 备用）—— 它们要固定路径，不能带内容哈希。
-
-链接列表不进仓库，由服务端直接吐：
-
-- `server/src/nav.rs` 提供 `GET /nav/links.json`，读配置 `nav.links` 指定的文件；相对路径按 `data_path` 解析（`links = "nav/links.json"` + `data_path = "/data"` ⇒ `/data/nav/links.json`），文件不存在返回 404。
-- 页面启动时 `fetch('/nav/links.json', {cache:'no-store'})`；取不到就用**编译进 bundle 的**示例配置（`ui/nav/links.example.json` 在构建时被 import，不再单独发请求），不会白屏。
-- 部署：把 `links.json` 放到实例数据目录（如 `~/ws/data/<实例>/nav/links.json`），并在 `Local.toml` 里写 `[default.nav]` / `[release.nav]` 的 `links`（默认值见 `server/Rocket.toml`）。配置文件放 data 目录，`app/update.sh` 升级不会动它。
-- 字段：`title` / `subtitle` / `watermark` / `newTab` / `theme` / `subTheme` / `links[...]`。条目带非空 `items` 就是二级菜单入口（子层可再套 `items` 做三级），**分组条目可以自带 `theme` 指定它子菜单的主题**；叶子字段是 `{name,url,desc,icon,accent}`。
-- `icon` 用**自托管**的 Material Symbols（`ui/package.json` 的 `material-symbols`，`import 'material-symbols/outlined.css'`；名字即元素文本，靠字体连字渲染）。直接写图标集**原名**（下划线写法）：`restaurant` / `dns` / `account_tree` / `hard_drive` / `network_check` / `photo_camera` / `deployed_code` / `storage` / `host` / `router` / `stairs` …，共 3900+ 个（清单 https://fonts.google.com/icons）。**不做任何映射或规范化**：写 `hard-drive`、`wifi2` 这类非原名一律认不出。其它字符串（emoji/汉字）原样画。⚠️ 免费版没有品牌 logo（docker/github 要另配 Simple Icons 之类）。写错的名字由 `checkIcons()` 量宽度识别后留空 + `console.warn` —— ⚠️ 必须用 `offsetWidth`（布局宽度），`getBoundingClientRect().width` 会把 `.ic` 的 `skewX` 外框算进去，把正常图标全误判成"没渲染"。完整 outlined 可变字体 3.8MB（首次下载、之后长缓存；`wght` 轴免费可调，页面用 `'wght' 300`）。
-- 主题是「一层一份」：页面上的 `theme` 管主菜单；**分组条目自带的 `theme`（兼容 `subTheme`）管它自己开出来的那一层**，没写就沿用父层（页面级 `subTheme` 只作全局兜底）。实现是 `nav/app.js` 里的 `themes[]` 栈（下标 = 层号，进层 push、退层 pop）+ `themeFor(level)`，切层时照样走斜条擦除。可选 `"p5"`（怪盗红 + 尖刺星）/ `"p3"`（深蓝水面 + 涟漪标记）。**同一层所有条目都用该层主题色**（包括进子菜单的那一项）；条目级 `accent` 会覆盖它，跨主题写死颜色会让那条看起来“跑到了别的主题”，一般别写。切主题时先用斜条擦过整屏再换配色（`.flash` 元素由 JS 建）。
-- `newTab`：`false`（推荐）= 同标签页打开，点击先播擦除动画再跳转；`true` = 交给浏览器开新标签（擦除动画就播不出来）。
-- **Service Worker（`ui/public/sw.js`，PWA 第 1 步：只做缓存）**：Rocket 的 FileServer **不发任何缓存头**（无 Cache-Control / ETag / Last-Modified），不装 SW 时实测**每次打开都要重下 4.0MB 字体**（`performance` 里 transferSize 每次都是 4,003,388），而服务端是上游二进制改不了 —— SW 是唯一能在客户端修掉的手段。白名单式拦截：导航页自身的导航 network-first（离线回缓存）、`/assets/*` + 固定图标 cache-first、`/nav/links.json` network-first 带 3.5s 超时，**其它路径一律不拦**（同 origin 还有 `/recipe/` `/meme/` `/gate/` `/album/` `/inbox/`）。⚠️ 两个坑：① navigate 分支必须限定 `'/'`/`'/index.html'`，否则别的页面的响应会被写进 SHELL 键、污染离线首页；② **别在 install 里批量预取资源** —— 实测会静默失败（只写进 SHELL，后面的既不执行、`catch` 也不报），install 只缓存 HTML，固定图标改由 `nav/app.js` 在 SW 接管后预热。退路：`sw.js` 里 `KILL = true` 重新部署即自注销 + 清缓存；改策略时同步改 `CACHE` 名。改它要重新构建 UI + rsync（不像改 `links.json` 那样免构建）。
-- **PWA / 可安装（第 2 步）**：`ui/public/manifest.json` —— ⚠️ 必须叫 `.json`，不能叫 `.webmanifest`：Rocket 不认那个扩展名，会回一个**没有 content-type** 的 200，Chrome 对这类 manifest 可能直接忽略（`.json` 才会发 `application/json`）。配合 `index.html` 里的 `<link rel="manifest">`、`mobile-web-app-capable` 与 `apple-mobile-web-app-capable` / `-status-bar-style=black-translucent` / `-title` 三个 meta，以及三个图标：`icon-192.png` / `icon-512.png`（purpose any）与 `icon-maskable-512.png`（`#060608` 深底 + 图形缩到 70% 留裁切余量），都由用户给的 `.ico` 的 512 层生成。`theme-color` 由 `nav/app.js` 跟着当前层主题更新（P5 红 ↔ P3 蓝）。验收：CDP `Page.getAppManifest` 的 `errors` 与 `Page.getInstallabilityErrors` 都应为空数组。注意装成 PWA 后是 standalone 窗口，`newTab:false` 的同标签跳转会在窗口内导航到外部站点。
-- 图标来源：`ui/public/favicon.ico` 是用户提供的多尺寸 `.ico`（9 个尺寸，含 512 层）；其余 PNG（`favicon-256`、`apple-touch-icon` 180、`icon-192`、`icon-512`、`icon-maskable-512`）全部由它的 512 层用 ffmpeg lanczos 降采样生成。`.ico` 在 16×16 下细节会糊（尾巴/眼睛化成一团），在意小尺寸辨识度就得另做简化版。
-- ℹ️ release 二进制由本仓库 CI 从 `v*` tag 构建，本身就含 `nav` 路由，所以 `app/update.sh` 升级后 `/nav/links.json` 照常可用；只有换成不含该路由的第三方包时才会重新 404（页面退回示例配置）。
-
-### Packaging
+## Packaging
 
 `make package` bundles `Rocket.toml`, the UI `dist/`, and the server binary into a tarball. Optional signing via `rsign2`.
 
-### Configuration
+## Configuration
 
 `Rocket.toml` at the server root is the primary config. A `local` field can point to an override file (e.g., `Local.toml`, `Debug.toml`). The server merges these and selects the profile section (`debug` / `release`). Data directory defaults to `data/`.
-
-### Key patterns
-
-- Modules expose a `build(base, rocket, config) -> Rocket<Build>` function that registers routes under a base path
-- `OnceCell`/`OnceLock` for lazy static initialization from config throughout
-- `sled` for embedded key-value persistence (inbox metadata, launch timestamps)
-- S3 (S3-compatible object store) for meme media storage
-- Version string generated at build time via `build.rs` using NATO phonetic alphabet suffixes
-- **Recipe ingredients** support nesting via `sub_ingredients` field — compound items (e.g. "浓盐葱姜水" → [盐, 葱, 姜, 水]) display as grouped cards in UI, with sub-ingredients scaled and aggregated independently
-- **Recipe menus** support `custom_dishes` — freeform dishes added directly to the order without a backing recipe file. Stored in menu frontmatter YAML, displayed with portion controls in summary and cooking views
-- **MQTT** is gated by `switches.mqtt` in config; when disabled, `mqtt::subscribe()` is a silent no-op (publish functions already were). Debug.toml sets it off by default
-- **Recipe editing** — full online editing for recipe markdown and cover images:
-  - `name` (Chinese dish name) is the sole unique identifier — no separate `id` field; old `id:` fields map via YAML preprocessing in `markdown::parse_recipe` and `menus::parse_menu_yaml`
-  - API: `GET /recipes/<name>/raw`, `PUT /recipes/<name>/raw`, `POST /recipes/<name>/image`
-  - Editor: `md-editor-v3` fullscreen overlay, launched from detail modal "✏️ 编辑此菜谱" or drawer "📝 新建菜谱"; cover image via separate modal dialog
-  - Write model: **push-then-sync** — `save_and_sync()` pushes to S3, then `manual_sync_and_reload()` pulls back to keep local cache and index consistent; S3 unavailable = save rejected
