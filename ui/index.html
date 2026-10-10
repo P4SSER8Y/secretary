@@ -9,7 +9,13 @@
 <link rel="icon" href="/favicon.ico" sizes="any">
 <link rel="icon" type="image/png" sizes="256x256" href="/favicon-256.png">
 <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
-<!-- 图标源文件在 ui/public/（favicon.ico 由用户提供的 9 尺寸 .ico 原样放进；两张 PNG 取自其中的 256×256 层）-->
+<!-- PWA：manifest + iOS 的 standalone 相关 meta（Service Worker 在 nav/app.js 里注册） -->
+<link rel="manifest" href="/manifest.json">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="NAVI">
+<!-- 图标源文件在 ui/public/（favicon.ico 由用户提供的 9 尺寸 .ico 原样放进；192/256/512 与 maskable 由它的 512 层生成）-->
 <!-- 导航页入口：这是 Vite 的项目根 html，构建后即 dist/index.html，
      由挂在 "/" 的 Rocket FileServer(Options::Index) 服务。
      样式（nav/p5.css）和示例配置都在 nav/app.js 里 import，走 Vite 打包压缩。 -->

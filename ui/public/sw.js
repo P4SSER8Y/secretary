@@ -17,7 +17,8 @@ const KILL = false;
 const SHELL = '/index.html';       /* 导航结果一律以这个稳定键入缓存（URL 上可能带 ?r= 之类的查询串） */
 const TIMEOUT = 3500;              /* network-first 的超时：超过就先用缓存顶住 */
 /* 和 /assets/ 一样按 cache-first 处理的固定路径（服务端不发缓存头，不缓存就会每次重下） */
-const STATIC = ['/favicon.ico', '/favicon-256.png', '/apple-touch-icon.png'];
+const STATIC = ['/favicon.ico', '/favicon-256.png', '/apple-touch-icon.png',
+                '/manifest.json', '/icon-192.png', '/icon-512.png', '/icon-maskable-512.png'];
 
 self.addEventListener('install', (event) => {
   if (KILL) { self.skipWaiting(); return; }

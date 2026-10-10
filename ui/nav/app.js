@@ -149,6 +149,12 @@ import LINKS_EXAMPLE from './links.example.json';
     var themeNow = null;
     var enterDelay = 0;    /* 主题擦除期间，新行要等它盖上来再入场 */
 
+    /* 状态栏 / PWA 的主题色跟着当前层主题走（P5 红 / P3 蓝） */
+    var themeColorEl = document.querySelector('meta[name="theme-color"]');
+    function syncThemeColor(t) {
+      if (themeColorEl) themeColorEl.setAttribute('content', (THEME_COLORS[t] || THEME_COLORS.p5).main);
+    }
+
     function themeFor(level) { return themes[level] || themes[0]; }
 
     function applyTheme(level) {
@@ -158,6 +164,7 @@ import LINKS_EXAMPLE from './links.example.json';
       if (themeNow === null) {                       /* 首次：直接定色，不闪 */
         themeNow = want;
         document.documentElement.setAttribute('data-theme', want);
+        syncThemeColor(want);
         return want;
       }
       var col = THEME_COLORS[want] || THEME_COLORS.p5;
@@ -168,7 +175,10 @@ import LINKS_EXAMPLE from './links.example.json';
       flashEl.classList.add('play');
       themeNow = want;
       enterDelay = 220;
-      setTimeout(function () { document.documentElement.setAttribute('data-theme', want); }, 230);
+      setTimeout(function () {
+        document.documentElement.setAttribute('data-theme', want);
+        syncThemeColor(want);
+      }, 230);
       return want;
     }
 
@@ -479,7 +489,8 @@ import LINKS_EXAMPLE from './links.example.json';
         .then(function () {
           /* SW 接管后顺手把几个固定图标预热进缓存：它们不在 /assets/ 下，服务端又不发缓存头，
              不预热就会每次都重新下（favicon.ico 有 218KB）。这些请求会走 SW 的 cache-first 分支。 */
-          ['/favicon.ico', '/favicon-256.png', '/apple-touch-icon.png'].forEach(function (u) {
+          ['/favicon.ico', '/favicon-256.png', '/apple-touch-icon.png', '/manifest.json',
+           '/icon-192.png', '/icon-512.png', '/icon-maskable-512.png'].forEach(function (u) {
             fetch(u, { cache: 'no-store' })['catch'](function () { /* 预热失败无所谓 */ });
           });
         })
