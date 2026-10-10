@@ -12,10 +12,12 @@
  *
  * ⚠️ 退路：把 KILL 改成 true 再部署一次 → SW 自注销并清掉所有缓存。
  */
-const CACHE = 'nav-v1';
+const CACHE = 'nav-v3';
 const KILL = false;
 const SHELL = '/index.html';       /* 导航结果一律以这个稳定键入缓存（URL 上可能带 ?r= 之类的查询串） */
 const TIMEOUT = 3500;              /* network-first 的超时：超过就先用缓存顶住 */
+/* 和 /assets/ 一样按 cache-first 处理的固定路径（服务端不发缓存头，不缓存就会每次重下） */
+const STATIC = ['/favicon.ico', '/favicon-256.png', '/apple-touch-icon.png'];
 
 self.addEventListener('install', (event) => {
   if (KILL) { self.skipWaiting(); return; }
@@ -23,21 +25,10 @@ self.addEventListener('install', (event) => {
     const cache = await caches.open(CACHE);
     try {
       const html = await fetch(SHELL, { cache: 'no-store' });
-      if (html.ok) {
-        const text = await html.clone().text();
-        await cache.put(SHELL, html);
-        /* 顺手预缓存 html 里引用的 /assets/*（js/css 加起来几十 KB）：
-           装完 SW 后，下一次导航就能完全离线打开。
-           字体（4MB）不预缓存 —— 本次浏览刚下过一遍，再主动拉等于重复下载；
-           它会在下一次受控访问时自然入缓存（之后永久命中）。 */
-        const urls = Array.from(new Set(text.match(/\/assets\/[A-Za-z0-9._-]+/g) || []));
-        await Promise.all(urls.map(async (u) => {
-          try {
-            const r = await fetch(u, { cache: 'no-store' });
-            if (r.ok) await cache.put(u, r);
-          } catch (e) { /* 单个失败不影响安装 */ }
-        }));
-      }
+      if (html.ok) await cache.put(SHELL, html);
+      /* 只预缓存 HTML 本体：实测在 install 里批量预取 /assets/*、/favicon* 会静默失败
+         （只有 SHELL 写进了缓存，后面的都没跑，连 catch 都不报），所以固定图标改由页面
+         在 SW 接管后预热（见 nav/app.js），/assets/* 则在第二次受控访问时自然入缓存。 */
     } catch (e) { /* 安装时离线：跳过预缓存，运行时再补 */ }
     await self.skipWaiting();
   })());
@@ -101,8 +92,8 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  if (url.pathname.startsWith('/assets/')) {            /* 带内容哈希的静态资源（含字体） */
-    event.respondWith(cacheFirst(req));
+  if (url.pathname.startsWith('/assets/') || STATIC.indexOf(url.pathname) >= 0) {
+    event.respondWith(cacheFirst(req));                 /* 带哈希的资源 + 固定图标：长期缓存 */
     return;
   }
 

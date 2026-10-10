@@ -475,6 +475,14 @@ import LINKS_EXAMPLE from './links.example.json';
     if ('serviceWorker' in navigator && location.protocol === 'https:') {
       var swVer = (String(import.meta.url).match(/index-([A-Za-z0-9_-]{6,})/) || [])[1] || 'dev';
       navigator.serviceWorker.register('/sw.js?v=' + swVer, { scope: '/' })
+        .then(function () { return navigator.serviceWorker.ready; })
+        .then(function () {
+          /* SW 接管后顺手把几个固定图标预热进缓存：它们不在 /assets/ 下，服务端又不发缓存头，
+             不预热就会每次都重新下（favicon.ico 有 218KB）。这些请求会走 SW 的 cache-first 分支。 */
+          ['/favicon.ico', '/favicon-256.png', '/apple-touch-icon.png'].forEach(function (u) {
+            fetch(u, { cache: 'no-store' })['catch'](function () { /* 预热失败无所谓 */ });
+          });
+        })
         ['catch'](function (e) { console.warn('[nav] service worker 注册失败：' + e.message); });
     }
   }
