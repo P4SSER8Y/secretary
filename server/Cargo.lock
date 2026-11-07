@@ -60,7 +60,7 @@ dependencies = [
 
 [[package]]
 name = "album"
-version = "0.25.3"
+version = "0.25.4"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -397,7 +397,7 @@ dependencies = [
 
 [[package]]
 name = "bark"
-version = "0.25.3"
+version = "0.25.4"
 dependencies = [
  "figment",
  "log",
@@ -1207,7 +1207,7 @@ dependencies = [
 
 [[package]]
 name = "gate"
-version = "0.25.3"
+version = "0.25.4"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -1747,7 +1747,7 @@ checksum = "40fac9d56ed6437b198fddba683305e8e2d651aa42647f00f5ae542e7f5c94a2"
 
 [[package]]
 name = "inbox"
-version = "0.25.3"
+version = "0.25.4"
 dependencies = [
  "anyhow",
  "humantime",
@@ -1954,7 +1954,7 @@ dependencies = [
 
 [[package]]
 name = "kindle"
-version = "0.25.3"
+version = "0.25.4"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1988,7 +1988,7 @@ checksum = "7a79a3332a6609480d7d0c9eab957bca6b455b91bb84e66d19f5ff66294b85b8"
 
 [[package]]
 name = "let_server_run"
-version = "0.25.3"
+version = "0.25.4"
 dependencies = [
  "anyhow",
  "chrono",
@@ -2124,7 +2124,7 @@ checksum = "6b947ae49db0d222b1dbc6b113ce7248a3fc3a6ca21b696717bfc000ba4484d8"
 
 [[package]]
 name = "meme"
-version = "0.25.3"
+version = "0.25.4"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -2204,7 +2204,7 @@ dependencies = [
 
 [[package]]
 name = "mqtt"
-version = "0.25.3"
+version = "0.25.4"
 dependencies = [
  "anyhow",
  "log",
@@ -2837,7 +2837,7 @@ dependencies = [
 
 [[package]]
 name = "qweather"
-version = "0.25.3"
+version = "0.25.4"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3096,7 +3096,7 @@ dependencies = [
 
 [[package]]
 name = "recipe"
-version = "0.25.3"
+version = "0.25.4"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3580,7 +3580,7 @@ checksum = "9774ba4a74de5f7b1c1451ed6cd5285a32eddb5cccb8cc655a4e50009e06477f"
 
 [[package]]
 name = "s3_sync"
-version = "0.25.3"
+version = "0.25.4"
 dependencies = [
  "anyhow",
  "log",
@@ -3639,7 +3639,7 @@ dependencies = [
 
 [[package]]
 name = "secretary"
-version = "0.25.3"
+version = "0.25.4"
 dependencies = [
  "album",
  "anyhow",
@@ -3666,6 +3666,8 @@ dependencies = [
  "recipe",
  "rocket",
  "rusttype",
+ "serde",
+ "serde_json",
  "tokio",
  "tsdb",
  "utils",
@@ -4388,7 +4390,7 @@ checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
 
 [[package]]
 name = "tsdb"
-version = "0.25.3"
+version = "0.25.4"
 dependencies = [
  "anyhow",
  "figment",
@@ -4491,7 +4493,7 @@ checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
 
 [[package]]
 name = "utils"
-version = "0.25.3"
+version = "0.25.4"
 dependencies = [
  "anyhow",
  "bincode",
