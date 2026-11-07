@@ -13,6 +13,7 @@ Generate kindle screen saver as dashboard. Inspired and powered by [pascalw/kind
 
 - `GET /kindle/cfg` 返回 JSON，`?format=text` 返回 `key=value`（Kindle 端用）
 - `POST /kindle/cfg` 表单更新，支持 `sleep`（1/0 自动休眠）、`interval`（下次唤醒秒数）、`style`（样式，空=默认）
+- 设备拉配置时带上自己已生效的 `applied_sleep/applied_interval/applied_style`，响应里会区分**待生效**（`sleep/interval/style`）和**设备已生效**（`applied` / `applied_*`），并给出 `pending` 标记
 
 ```sh
 curl -X POST -d "interval=3600" https://s.32323235.xyz/kindle/cfg

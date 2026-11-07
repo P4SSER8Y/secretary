@@ -169,6 +169,25 @@ impl Default for Cfg {
 
 const CFG_KEY: &str = "kindle/config";
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct Applied {
+    cfg: Cfg,
+    at: i64,
+}
+
+const APPLIED_KEY: &str = "kindle/applied";
+
+fn load_applied() -> Option<Applied> {
+    utils::database::Db::new()
+        .get::<Applied>(APPLIED_KEY)
+        .ok()
+        .flatten()
+}
+
+fn save_applied(a: &Applied) {
+    let _ = utils::database::Db::new().set(APPLIED_KEY, a);
+}
+
 fn load_cfg() -> Cfg {
     utils::database::Db::new()
         .get::<Cfg>(CFG_KEY)
@@ -185,25 +204,64 @@ fn now_epoch() -> u64 {
     chrono::Utc::now().timestamp().max(0) as u64
 }
 
-fn cfg_json(cfg: &Cfg) -> String {
-    serde_json::json!({
-        "sleep": cfg.sleep,
-        "interval": cfg.interval,
-        "style": cfg.style,
-        "next_refresh_in": if cfg.sleep { cfg.interval } else { 0 },
+fn cfg_json(pending: &Cfg, applied: Option<&Applied>) -> String {
+    let mut v = serde_json::json!({
+        "sleep": pending.sleep,
+        "interval": pending.interval,
+        "style": pending.style,
+        "next_refresh_in": if pending.sleep { pending.interval } else { 0 },
         "server_time": now_epoch(),
-    })
-    .to_string()
+    });
+    match applied {
+        Some(a) => {
+            v["applied"] = serde_json::json!({
+                "sleep": a.cfg.sleep,
+                "interval": a.cfg.interval,
+                "style": a.cfg.style,
+                "at": a.at,
+            });
+            v["pending"] = serde_json::json!(a.cfg.sleep != pending.sleep
+                || a.cfg.interval != pending.interval
+                || a.cfg.style != pending.style);
+        }
+        None => {
+            v["applied"] = serde_json::Value::Null;
+            v["pending"] = serde_json::json!(true);
+        }
+    }
+    v.to_string()
 }
 
-fn cfg_text(cfg: &Cfg) -> String {
+fn cfg_text(pending: &Cfg, applied: Option<&Applied>) -> String {
+    let (a_sleep, a_interval, a_style, a_at, pending_flag) = match applied {
+        Some(a) => (
+            if a.cfg.sleep { 1 } else { 0 },
+            a.cfg.interval,
+            a.cfg.style.map(|s| s.to_string()).unwrap_or_default(),
+            a.at,
+            if a.cfg.sleep != pending.sleep
+                || a.cfg.interval != pending.interval
+                || a.cfg.style != pending.style
+            {
+                1
+            } else {
+                0
+            },
+        ),
+        None => (0, 0, String::new(), 0, 1),
+    };
     format!(
-        "sleep={}\ninterval={}\nstyle={}\nnext_refresh_in={}\nserver_time={}\n",
-        if cfg.sleep { 1 } else { 0 },
-        cfg.interval,
-        cfg.style.map(|s| s.to_string()).unwrap_or_default(),
-        if cfg.sleep { cfg.interval } else { 0 },
+        "sleep={}\ninterval={}\nstyle={}\nnext_refresh_in={}\nserver_time={}\napplied_sleep={}\napplied_interval={}\napplied_style={}\napplied_at={}\npending={}\n",
+        if pending.sleep { 1 } else { 0 },
+        pending.interval,
+        pending.style.map(|s| s.to_string()).unwrap_or_default(),
+        if pending.sleep { pending.interval } else { 0 },
         now_epoch(),
+        a_sleep,
+        a_interval,
+        a_style,
+        a_at,
+        pending_flag,
     )
 }
 
@@ -262,12 +320,41 @@ fn apply_form(cfg: &mut Cfg, body: &str) {
     }
 }
 
-#[get("/cfg?<format>")]
-fn get_cfg(format: Option<String>) -> (ContentType, String) {
-    let cfg = load_cfg();
+#[get("/cfg?<format>&<applied_sleep>&<applied_interval>&<applied_style>")]
+fn get_cfg(
+    format: Option<String>,
+    applied_sleep: Option<String>,
+    applied_interval: Option<String>,
+    applied_style: Option<String>,
+) -> (ContentType, String) {
+    let pending = load_cfg();
+
+    // 设备把「当前已生效的配置」带上来，记下来供 /kindle/cfg 展示
+    if applied_sleep.is_some() || applied_interval.is_some() || applied_style.is_some() {
+        let cfg = Cfg {
+            sleep: applied_sleep
+                .as_deref()
+                .map(|v| v != "0" && v != "false" && !v.is_empty())
+                .unwrap_or(true),
+            interval: applied_interval
+                .as_deref()
+                .and_then(|v| v.parse::<u64>().ok())
+                .unwrap_or(0),
+            style: applied_style.and_then(|v| {
+                if v.is_empty() {
+                    None
+                } else {
+                    v.parse::<usize>().ok()
+                }
+            }),
+        };
+        save_applied(&Applied { cfg, at: now_epoch() as i64 });
+    }
+
+    let applied = load_applied();
     match format.as_deref() {
-        Some("text") => (ContentType::Plain, cfg_text(&cfg)),
-        _ => (ContentType::JSON, cfg_json(&cfg)),
+        Some("text") => (ContentType::Plain, cfg_text(&pending, applied.as_ref())),
+        _ => (ContentType::JSON, cfg_json(&pending, applied.as_ref())),
     }
 }
 
@@ -277,5 +364,5 @@ fn set_cfg(body: String) -> (ContentType, String) {
     apply_form(&mut cfg, &body);
     save_cfg(&cfg);
     info!("kindle config updated: {:?}", cfg);
-    (ContentType::JSON, cfg_json(&cfg))
+    (ContentType::JSON, cfg_json(&cfg, load_applied().as_ref()))
 }
