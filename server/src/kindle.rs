@@ -3,7 +3,9 @@ use kindle::Context;
 use serde::{Deserialize, Serialize};
 use once_cell::sync::OnceCell;
 use rocket::figment::Figment;
+use rocket::form::{Form, FromForm};
 use rocket::response::status::NotFound;
+use rocket::http::Status;
 use rocket::{http::ContentType, Build, Rocket};
 use std::collections::HashMap;
 use std::io::Cursor;
@@ -60,7 +62,7 @@ pub fn build(base: &'static str, build: Rocket<Build>, config: &Figment) -> Rock
     });
     mqtt::publish_availability(&device_id, "online");
 
-    build.mount(base, routes![main, get_cfg, set_cfg])
+    build.mount(base, routes![main, get_cfg, set_cfg, upload_image])
 }
 
 async fn save_battery(battery: usize) -> Result<(), anyhow::Error> {
@@ -365,4 +367,75 @@ fn set_cfg(body: String) -> (ContentType, String) {
     save_cfg(&cfg);
     info!("kindle config updated: {:?}", cfg);
     (ContentType::JSON, cfg_json(&cfg, load_applied().as_ref()))
+}
+
+
+// ---------- 上传图片直接显示 ----------
+//
+//   POST /kindle/image   multipart/form-data，字段名 file
+//
+// 自动按 600x800 居中裁剪、转 16 级灰度、存到 dashboard_path，并返回处理后的 PNG。
+
+#[derive(FromForm)]
+struct KindleUpload<'r> {
+    file: &'r [u8],
+}
+
+const TARGET_W: u32 = 600;
+const TARGET_H: u32 = 800;
+
+fn process_image(bytes: &[u8]) -> Result<image::GrayImage, String> {
+    let img = image::load_from_memory(bytes).map_err(|e| format!("decode failed: {e}"))?;
+    let gray = img.to_luma8();
+    let (w, h) = (gray.width() as f64, gray.height() as f64);
+    if w < 1.0 || h < 1.0 {
+        return Err("empty image".to_string());
+    }
+
+    // 等比放大到刚好盖住 600x800，再多出来的部分居中裁掉
+    let scale = f64::max(TARGET_W as f64 / w, TARGET_H as f64 / h);
+    let nw = ((w * scale).round() as u32).max(TARGET_W);
+    let nh = ((h * scale).round() as u32).max(TARGET_H);
+    let resized = image::imageops::resize(&gray, nw, nh, image::imageops::FilterType::Lanczos3);
+    let x = (nw - TARGET_W) / 2;
+    let y = (nh - TARGET_H) / 2;
+    let mut out = image::imageops::crop_imm(&resized, x, y, TARGET_W, TARGET_H).to_image();
+
+    // 16 级灰度：0,17,34,...,255
+    for p in out.pixels_mut() {
+        let v = (p.0[0] as f32 / 17.0).round() * 17.0;
+        p.0[0] = v.min(255.0) as u8;
+    }
+    Ok(out)
+}
+
+fn dashboard_file() -> String {
+    DASHBOARD_PATH
+        .get()
+        .cloned()
+        .flatten()
+        .unwrap_or_else(|| format!("{}/kindle/dashboard.png", utils::get_data_path()))
+}
+
+#[post("/image", data = "<data>", format = "multipart/form-data")]
+fn upload_image(data: Form<KindleUpload<'_>>) -> Result<(ContentType, Vec<u8>), (Status, String)> {
+    if data.file.is_empty() {
+        return Err((Status::BadRequest, "empty file".to_string()));
+    }
+    let processed = process_image(data.file).map_err(|e| (Status::BadRequest, e))?;
+
+    let path = dashboard_file();
+    if let Some(parent) = std::path::Path::new(&path).parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    processed
+        .save_with_format(&path, image::ImageFormat::Png)
+        .map_err(|e| (Status::InternalServerError, format!("save failed: {e}")))?;
+    info!("kindle image saved to {} ({}x{})", path, processed.width(), processed.height());
+
+    let mut buffer: Vec<u8> = Vec::new();
+    processed
+        .write_to(&mut Cursor::new(&mut buffer), image::ImageOutputFormat::Png)
+        .map_err(|e| (Status::InternalServerError, format!("encode failed: {e}")))?;
+    Ok((ContentType::PNG, buffer))
 }
