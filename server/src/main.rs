@@ -20,6 +20,7 @@ mod let_server_run;
 mod logger;
 mod nav;
 mod qweather;
+mod static_guard;
 mod tsdb;
 
 pub const VERSION: &'static str = include_str!(concat!(env!("OUT_DIR"), "/version"));
@@ -162,22 +163,28 @@ async fn go(config: &Figment) -> Result<(), rocket::Error> {
     if is_enabled(&config, "weather", false) {
         wtf = qweather::build(wtf, &config).await;
     }
-    if is_enabled(&config, "kindle", false) {
+    let kindle_on = is_enabled(&config, "kindle", false);
+    if kindle_on {
         wtf = kindle::build("/kindle/", wtf, &config);
     }
-    if is_enabled(&config, "meme", false) {
+    let meme_on = is_enabled(&config, "meme", false);
+    if meme_on {
         wtf = meme::build("/meme/", wtf, &config).await.unwrap();
     }
-    if is_enabled(&config, "album", false) {
+    let album_on = is_enabled(&config, "album", false);
+    if album_on {
         wtf = album::build("/album/api/", wtf, &config).await.unwrap();
     }
-    if is_enabled(&config, "inbox", false) {
+    let inbox_on = is_enabled(&config, "inbox", false);
+    if inbox_on {
         wtf = inbox::build("/inbox/api/", wtf, &config).await.unwrap();
     }
-    if is_enabled(&config, "recipe", false) {
+    let recipe_on = is_enabled(&config, "recipe", false);
+    if recipe_on {
         wtf = recipe::build("/recipe/api/", wtf, &config).await.unwrap();
     }
-    if is_enabled(&config, "gate", false) {
+    let gate_on = is_enabled(&config, "gate", false);
+    if gate_on {
         wtf = gate::build("/gate/api/", wtf, &config).await.unwrap();
     }
     // 导航页的链接配置：GET /nav/links.json，文件路径见配置 nav.links
@@ -185,9 +192,16 @@ async fn go(config: &Figment) -> Result<(), rocket::Error> {
 
     if let Ok(ui) = config.find_value("ui_path") {
         if let Some(ui) = ui.as_str() {
-            use rocket::fs::{FileServer, Options};
-            let options = Options::Index | Options::NormalizeDirs;
-            wtf = wtf.mount("/", FileServer::new(ui, options).rank(999))
+            // 静态页按模块开关过滤：关掉的模块（含没配的）连页面一起 404
+            let switches = [
+                ("kindle", kindle_on),
+                ("meme", meme_on),
+                ("album", album_on),
+                ("inbox", inbox_on),
+                ("recipe", recipe_on),
+                ("gate", gate_on),
+            ];
+            wtf = wtf.mount("/", static_guard::build(ui, &switches))
         }
     }
 
