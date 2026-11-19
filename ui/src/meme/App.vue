@@ -254,10 +254,14 @@ function apply_vault_key(key: string) {
     commit_password();
 }
 
-function cancel_vault_key() {
-    vault_shown.value = false;
+function clear_secret() {
     password.value = '';
     commit_password();
+}
+
+function cancel_vault_key() {
+    vault_shown.value = false;
+    clear_secret();
 }
 
 function apply_reencrypt(newPwd: string) {
@@ -304,7 +308,9 @@ function on_menu_click() {
     if (long_pressed) {
         long_pressed = false;
         menu_open.value = false;
-        if (filter.value.trim().length === 0) {
+        if (password.value) {
+            clear_secret();
+        } else if (filter.value.trim().length === 0) {
             vault_shown.value = true;
         } else {
             reencrypt_shown.value = true;
