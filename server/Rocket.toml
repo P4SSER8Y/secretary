@@ -27,6 +27,8 @@ album = true
 recipe = true
 gate = true
 mqtt = true
+# 导航页（/ 首页 + /nav/links.json）；单模块实例（如 meme 专用那份）设 false
+nav = true
 
 [default.recipe.s3]
 endpoint = ""

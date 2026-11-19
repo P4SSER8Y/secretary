@@ -10,6 +10,11 @@
 //! 判断用的是与 `FileServer` 相同的解码后路径段（并同样处理 `..`）：`/meme/`、
 //! `/meme/index.html`、`/meme/raven.html`、`/me%6De/` 都会 404，而 `/meme/../recipe/`
 //! 按 `FileServer` 的解析理解成 `recipe`。
+//!
+//! 导航页（`/` 首页）没有模块目录，走的是 `FileServer` 的 `Options::Index`（把
+//! `ui/index.html` 当目录索引发出去），所以不受上面那套开关约束；`switches.nav = false`
+//! 时在这里单独把根路径与 `/index.html` 挡成 404 —— 单模块实例（如只跑 meme 的那份）
+//! 不该冒出导航页。
 
 use rocket::fs::{FileServer, Options};
 use rocket::http::{Method, Status};
@@ -30,6 +35,8 @@ pub type Switch<'a> = (&'a str, bool);
 struct GuardedFiles {
     inner: FileServer,
     disabled: Vec<&'static str>,
+    /// `switches.nav = false`：根路径与 `/index.html` 不服务导航页
+    block_index: bool,
 }
 
 #[rocket::async_trait]
@@ -43,6 +50,11 @@ impl Handler for GuardedFiles {
             } else {
                 segments.push(segment);
             }
+        }
+        // 导航页：`/`（空路径段）和直接访问 `/index.html` 都挡掉
+        if self.block_index && (segments.is_empty() || segments == ["index.html"]) {
+            log::warn!("{}: nav page is disabled, index blocked", req.uri());
+            return Outcome::error(Status::NotFound);
         }
         if let Some(first) = segments.first() {
             if let Some(module) = self.disabled.iter().copied().find(|module| *module == *first) {
@@ -63,7 +75,8 @@ impl From<GuardedFiles> for Vec<Route> {
 }
 
 /// 用 `ui_path` 建静态页服务：`switches` 里关掉的模块（`STATIC_MODULES` 范围内）整段 404。
-pub fn build(ui_path: &str, switches: &[Switch<'_>]) -> Vec<Route> {
+/// `nav` 为 `false` 时，根路径与 `/index.html` 也不服务导航页。
+pub fn build(ui_path: &str, switches: &[Switch<'_>], nav: bool) -> Vec<Route> {
     // 没配的开关按关闭处理，与 main.rs 的 `is_enabled(.., false)` 一致
     let enabled = |module: &str| {
         switches
@@ -75,6 +88,9 @@ pub fn build(ui_path: &str, switches: &[Switch<'_>]) -> Vec<Route> {
         .filter(|module| !enabled(module))
         .collect();
 
+    if !nav {
+        log::info!("switches.nav is disabled: / and /index.html will 404");
+    }
     if disabled.is_empty() {
         log::info!("static pages of all modules are served");
     } else {
@@ -82,5 +98,10 @@ pub fn build(ui_path: &str, switches: &[Switch<'_>]) -> Vec<Route> {
     }
 
     let inner = FileServer::new(ui_path, Options::Index | Options::NormalizeDirs).rank(RANK);
-    GuardedFiles { inner, disabled }.into()
+    GuardedFiles {
+        inner,
+        disabled,
+        block_index: !nav,
+    }
+    .into()
 }

@@ -187,8 +187,12 @@ async fn go(config: &Figment) -> Result<(), rocket::Error> {
     if gate_on {
         wtf = gate::build("/gate/api/", wtf, &config).await.unwrap();
     }
-    // 导航页的链接配置：GET /nav/links.json，文件路径见配置 nav.links
-    wtf = nav::build(wtf, &config);
+    // 导航页：GET /nav/links.json + 首页（dist/index.html，由 FileServer 的 Index 提供）
+    // switches.nav = false 时两个一起关：单模块实例（如只跑 meme 的那份）不该有导航页
+    let nav_on = is_enabled(&config, "nav", true);
+    if nav_on {
+        wtf = nav::build(wtf, &config);
+    }
 
     if let Ok(ui) = config.find_value("ui_path") {
         if let Some(ui) = ui.as_str() {
@@ -201,7 +205,7 @@ async fn go(config: &Figment) -> Result<(), rocket::Error> {
                 ("recipe", recipe_on),
                 ("gate", gate_on),
             ];
-            wtf = wtf.mount("/", static_guard::build(ui, &switches))
+            wtf = wtf.mount("/", static_guard::build(ui, &switches, nav_on))
         }
     }
 
