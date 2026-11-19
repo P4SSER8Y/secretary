@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, getCurrentInstance, onMounted, provide, Ref, ref, watch } from 'vue';
+import { computed, getCurrentInstance, nextTick, onBeforeUnmount, onMounted, provide, Ref, ref, watch } from 'vue';
 import Waterfall from './pages/Waterfall.vue';
 import Gallery from './pages/Gallery.vue';
 import { ravenOpen, ravenWait, ravenUrl } from './raven';
@@ -11,6 +11,7 @@ import Upload from './pages/Upload.vue';
 import FullScreenPreview from './pages/FullScreenPreview.vue';
 import TagCloud from './pages/TagCloud.vue';
 import ReencryptDialog from './pages/ReencryptDialog.vue';
+import VaultKeyDialog from './pages/VaultKeyDialog.vue';
 
 const config = useConfigStore();
 const { page, waterfall_pagnition } = storeToRefs(config);
@@ -57,18 +58,21 @@ let is_randomized = ref(true);
 let single_preview: Ref<Meta | null> = ref(null);
 let is_tag_cloud_shown = ref(false);
 let reencrypt_shown = ref(false);
+let vault_shown = ref(false);
 let password: Ref<string> = ref('');
 provide('password', password);
-// 上次真正应用过的密码，用于跳过"点击输入框但没改密码"这类无意义刷新。
 let committed_password = '';
 
 // 拉取列表（GET /list）。服务端会按当前密码惰性判断是否需要同步，
 // 同一密码只同步一次，因此登录/换密码都能在第一次拉取时拿到新数据。
+let list_seq = 0;
+
 async function fetch_list() {
     if (!token.value) {
         data.value = null;
         return;
     }
+    const seq = ++list_seq;
     let params: ApiListParams = {};
     if (filter.value.length > 0) {
         params.filter = filter.value;
@@ -82,6 +86,9 @@ async function fetch_list() {
             headers: { token: token.value },
             params: params,
         });
+        if (seq !== list_seq || !token.value) {
+            return;
+        }
         if (is_randomized.value) {
             let temp = res?.data as MemeList | null;
             if (temp) {
@@ -95,7 +102,9 @@ async function fetch_list() {
             data.value = res?.data as MemeList | null;
         }
     } catch {
-        data.value = null;
+        if (seq === list_seq) {
+            data.value = null;
+        }
     }
 }
 
@@ -146,6 +155,8 @@ async function logout() {
     data.value = null;
     password.value = '';
     committed_password = '';
+    vault_shown.value = false;
+    menu_open.value = false;
     sessionStorage.removeItem('password');
 }
 
@@ -203,12 +214,17 @@ watch(token, (newVal) => {
 
 watch([filter, is_asc, sort, is_randomized], update);
 
-// 密码即时写入 sessionStorage，让后续所有请求带上当前密码。
+// 换口令时先清列表，避免旧条目用新密钥去请求缩略图。
 watch(password, (v) => {
+    data.value = null;
+    single_preview.value = null;
+    list_seq++;
     if (v) {
         sessionStorage.setItem('password', v);
+        document.documentElement.setAttribute('data-theme', 'forest');
     } else {
         sessionStorage.removeItem('password');
+        document.documentElement.removeAttribute('data-theme');
     }
 });
 
@@ -222,16 +238,91 @@ const apply_password = debounce(() => {
 }, 800);
 watch(password, apply_password);
 
-// 回车立即应用密码。
+// 立即提交当前口令。
 function commit_password() {
     apply_password.cancel();
     if (password.value !== committed_password) {
         committed_password = password.value;
-        update();
+        update.cancel();
+        void nextTick(fetch_list);
     }
 }
 
+function apply_vault_key(key: string) {
+    vault_shown.value = false;
+    password.value = key;
+    commit_password();
+}
+
+function cancel_vault_key() {
+    vault_shown.value = false;
+    password.value = '';
+    commit_password();
+}
+
+function apply_reencrypt(newPwd: string) {
+    reencrypt_shown.value = false;
+    password.value = newPwd;
+    commit_password();
+}
+
+let long_press_timer: ReturnType<typeof setTimeout> | undefined;
+let long_pressed = false;
+let press_start = 0;
+let armed = ref(false);
+let menu_open = ref(false);
+
+function on_menu_pointerdown(e: PointerEvent) {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    long_pressed = false;
+    press_start = 0;
+    armed.value = false;
+    clearTimeout(long_press_timer);
+    if (menu_open.value) return;
+    press_start = e.timeStamp || performance.now();
+    long_press_timer = setTimeout(() => {
+        long_pressed = true;
+        armed.value = true;
+    }, 1000);
+}
+
+function on_menu_pointerup(e: PointerEvent) {
+    clearTimeout(long_press_timer);
+    const now = e.timeStamp || performance.now();
+    long_pressed = press_start > 0 && now - press_start >= 1000;
+    press_start = 0;
+    armed.value = false;
+}
+
+function on_menu_pointercancel() {
+    clearTimeout(long_press_timer);
+    armed.value = false;
+}
+
+function on_menu_click() {
+    armed.value = false;
+    if (long_pressed) {
+        long_pressed = false;
+        menu_open.value = false;
+        if (filter.value.trim().length === 0) {
+            vault_shown.value = true;
+        } else {
+            reencrypt_shown.value = true;
+        }
+        return;
+    }
+    menu_open.value = !menu_open.value;
+}
+
+function on_document_pointerdown(e: PointerEvent) {
+    if (!menu_open.value) return;
+    const target = e.target as HTMLElement | null;
+    if (target?.closest('.menu-wrap')) return;
+    menu_open.value = false;
+}
+
 onMounted(() => {
+    document.addEventListener('pointerdown', on_document_pointerdown);
     token.value =
         document.cookie
             .split(';')
@@ -240,6 +331,10 @@ onMounted(() => {
     sessionStorage.removeItem('password');
     password.value = '';
     committed_password = '';
+});
+
+onBeforeUnmount(() => {
+    document.removeEventListener('pointerdown', on_document_pointerdown);
 });
 </script>
 
@@ -257,11 +352,17 @@ onMounted(() => {
                 </div>
             </label>
         </div>
-        <div v-if="token" class="dropdown dropdown-end">
-            <div tabindex="0" role="button" class="btn btn-ghost">
-                <div class="w-2">↓</div>
-            </div>
-            <ul tabindex="0" class="menu menu-sm dropdown-content bg-base-100 rounded-box z-1 mt-3 w-80 p-2 shadow">
+        <div v-if="token" class="relative menu-wrap">
+            <button type="button" class="btn btn-ghost menu-trigger"
+                @click="on_menu_click"
+                @pointerdown="on_menu_pointerdown"
+                @pointerup="on_menu_pointerup"
+                @pointerleave="on_menu_pointercancel"
+                @pointercancel="on_menu_pointercancel"
+                @contextmenu.prevent>
+                <div class="w-4 text-center leading-none">{{ armed ? '💀' : '↓' }}</div>
+            </button>
+            <ul v-if="menu_open" class="menu menu-sm absolute right-0 bg-base-100 rounded-box z-50 mt-3 w-80 p-2 shadow">
                 <li>
                     <span>user</span>
                     <ul>
@@ -277,19 +378,14 @@ onMounted(() => {
                                 <span v-if="force_update_cost" class="font-mono"> {{ force_update_cost }}s </span>
                             </a>
                         </li>
-                        <li>
-                            <a @click="reencrypt_shown = true">re-encrypt</a>
+                        <li v-if="password">
+                            <a @click="reencrypt_shown = true; menu_open = false">re-encrypt</a>
                         </li>
-                        <li>
-                            <div class="px-2 py-1">
-                                <input
-                                    type="password"
-                                    placeholder="vault password"
-                                    class="input input-ghost input-xs w-full"
-                                    v-model="password"
-                                    @keyup.enter="commit_password()"
-                                />
-                            </div>
+                        <li v-if="password">
+                            <a @click="vault_shown = true; menu_open = false">
+                                secret
+                                <span>✓</span>
+                            </a>
                         </li>
                     </ul>
                 </li>
@@ -377,10 +473,18 @@ onMounted(() => {
     </TagCloud>
     <ReencryptDialog v-if="reencrypt_shown" :filter="filter" :password="password"
         @quit="reencrypt_shown = false"
-        @done="(newPwd: string) => { password = newPwd; reencrypt_shown = false; }">
+        @done="apply_reencrypt">
     </ReencryptDialog>
+    <VaultKeyDialog v-if="vault_shown" @quit="cancel_vault_key" @done="apply_vault_key">
+    </VaultKeyDialog>
 </template>
 
 <style scoped lang="postcss">
 @reference "tailwindcss";
+
+.menu-trigger {
+    -webkit-touch-callout: none;
+    user-select: none;
+    touch-action: manipulation;
+}
 </style>

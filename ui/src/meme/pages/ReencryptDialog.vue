@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, getCurrentInstance, onBeforeUnmount, onMounted, ref } from 'vue';
 import type { ReencryptResponse } from '../lib/struct';
+import SecretInput from '../components/SecretInput.vue';
 
 const props = defineProps<{
     filter: string;
@@ -25,7 +26,7 @@ const passwordMismatch = computed(() =>
 );
 const isRemoving = computed(() => newPassword.value.length === 0);
 const canSubmit = computed(() =>
-    !loading.value && !passwordMismatch.value
+    !loading.value && !passwordMismatch.value && filterText.value.trim().length > 0
 );
 
 async function submit() {
@@ -36,7 +37,7 @@ async function submit() {
         const res = await api?.post('reencrypt', null, {
             params: {
                 new_password: newPassword.value,
-                filter: filterText.value || undefined,
+                filter: filterText.value.trim(),
             },
             timeout: 120000,
         });
@@ -74,25 +75,25 @@ onBeforeUnmount(() => {
         <div class="card bg-base-200 shadow-xl max-w-md w-full">
             <div class="card-body">
                 <h2 class="card-title">Re-encrypt Files</h2>
-                <input
-                    type="password"
-                    placeholder="new password (leave empty to remove encryption)"
+                <SecretInput
                     v-model="newPassword"
-                    class="input input-bordered w-full"
+                    placeholder="new key (leave empty to remove encryption)"
                 />
-                <input
-                    type="password"
-                    placeholder="confirm password"
+                <SecretInput
                     v-model="confirmPassword"
-                    :class="['input input-bordered w-full', passwordMismatch ? 'input-error' : '']"
+                    placeholder="confirm key"
+                    :class="passwordMismatch ? 'input-error' : ''"
                 />
-                <p v-if="passwordMismatch" class="text-error text-sm">Passwords do not match</p>
+                <p v-if="passwordMismatch" class="text-error text-sm">Keys do not match</p>
                 <input
                     type="text"
-                    placeholder="filter (optional)"
+                    placeholder="filter (required)"
                     v-model="filterText"
                     class="input input-bordered w-full"
                 />
+                <p v-if="filterText.trim().length === 0" class="text-warning text-sm">
+                    Filter is required.
+                </p>
                 <div v-if="loading" class="text-center">
                     <span class="loading loading-spinner"></span>
                     <span class="ml-2">Processing...</span>
